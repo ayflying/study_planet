@@ -17,11 +17,11 @@ run-server: build-server
 vet:
 	cd server && go vet ./...
 
-## 本地构建双容器
+## 本地构建 GoFrame 应用镜像（包含 Vue 静态资源）
 build-images:
 	docker compose build
 
-## 启动双容器（客户端入口 + 服务端 API）
+## 启动单容器（GoFrame 静态资源 + API）
 deploy:
 	docker compose up -d --build
 

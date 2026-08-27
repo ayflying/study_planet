@@ -6,9 +6,9 @@
 
 ## 项目分层
 
-- `client/`：Vue 3 + Vite 学习星球工作台，按组件维护页面和玩法；生产构建产物由 Nginx 托管，并统一将 `/api/*` 转发到服务端。
-- `server/`：GoFrame API、SQLite 数据库迁移、种子数据与 Casdoor 登录；仅在 Docker 内网暴露 `8080`。
-- 外部访问地址维持不变：`http://<host>:18180/`。
+- `client/`：Vue 3 + Vite 学习星球工作台，按组件维护页面和玩法；构建产物由 GoFrame 静态文件服务直接托管。
+- `server/`：GoFrame API、静态资源服务、SQLite 数据库迁移、种子数据与 Casdoor 登录。
+- 外部访问地址维持不变：`http://<host>:18180/`，单容器同时提供页面与 API。
 
 ## 功能总览
 
@@ -25,7 +25,7 @@
 # 本地运行服务端 API（默认 :8080，SQLite ./data/studyplanet.db）
 cd server && go run .
 
-# Docker Compose：client（外部入口）+ server（内部 API）
+# Docker Compose：GoFrame server 同时托管 Vue 静态资源与 API
 docker compose up -d --build
 curl http://localhost:18180/api/health
 ```
@@ -124,14 +124,14 @@ cp internal/db/migrations/000002_multi_student.down.sql internal/db/migrations/0
 
 ## 发版与 CI
 
-1. 改 `VERSION` 文件（如 `0.1.2` → `0.1.3`），提交并 push 到 `main`；
-2. GitHub Actions 自动构建两份镜像：`study_planet-client` 与 `study_planet-server`，各自推送 `latest` + 版本号双标签；
-3. 服务器上 `docker compose pull && docker compose up -d` 同步更新客户端和服务端。
+1. 改 `VERSION` 文件，提交并 push 到 `main`；
+2. GitHub Actions 自动构建统一镜像 `study_planet`（GoFrame API + Vue 静态资源），推送 `latest` + 版本号双标签；
+3. 服务器上 `docker compose pull && docker compose up -d` 更新单容器应用。
 
 回滚到指定版本：
 
 ```bash
-# 同时将 client 与 server image 标签改为同一历史版本号，例如 0.1.4
+# 将 study_planet image 标签改为历史版本号，例如 0.1.6
 docker compose up -d
 ```
 
@@ -141,27 +141,30 @@ CI 触发方式：push 到 `main` 自动触发；也可在 Actions 页面手动 
 
 ```
 studyplanet/
-├── client/                       # 独立 Vue 3 + Vite 客户端
+├── client/                       # 独立 Vue 3 + Vite 客户端源码
 │   ├── src/App.vue               # 学习航线、闯关、宠物陪伴、积分、连击、结算组件
 │   ├── src/main.js / style.css   # Vue 入口与样式
 │   ├── assets/logo.png           # 客户端品牌 Logo
 │   ├── vite.config.js            # 开发环境 /api 代理
-│   ├── nginx.conf                # 生产静态托管 + /api 反代到 server
-│   └── Dockerfile                # Vue 构建 + Nginx 运行镜像
-├── server/                       # 独立服务端：仅 API 与业务数据
+│   └── package.json              # 前端依赖与构建命令
+├── server/                       # GoFrame 服务端：API + 静态资源托管
 │   ├── main.go                   # API 路由注册
 │   ├── internal/
 │   │   ├── config/config.go      # yaml + env 配置加载
 │   │   ├── db/                   # 连接与内嵌迁移 SQL
-│   │   ├── handler/              # 学习、家长、Casdoor API
+│   │   ├── cmd/                  # GoFrame 命令入口
+│   │   ├── controller/studyplanet/ # API 路由
+│   │   ├── service/studyplanet/  # 学习、家长、Casdoor 业务
 │   │   ├── middleware/           # CORS + 家长 JWT 鉴权
+│   │   ├── db/ migrate/          # 数据库连接与迁移
 │   │   └── seed/                 # 空库示例数据
+│   ├── examples/gf-init-example/ # gf init 生成的官方脚手架示例
 │   ├── manifest/config/          # 服务端配置
 │   ├── go.mod / go.sum
-│   └── Dockerfile                # Go API 镜像
+│   └── Dockerfile                # Vue 构建 + GoFrame 运行镜像
 ├── docs/logo.png                 # README 品牌 Logo
 ├── VERSION                        # 双镜像统一版本
-└── docker-compose.yml            # client + server + SQLite 数据卷
+└── docker-compose.yml            # 单 GoFrame 容器 + SQLite 数据卷
 ```
 
 ## 在线实例

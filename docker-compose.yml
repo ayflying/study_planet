@@ -19,7 +19,7 @@ services:
       # - CASDOOR_APP_NAME=studyplanet
       # - CASDOOR_REDIRECT_URL=http://192.168.50.217:18180/api/parent/casdoor/callback
     volumes:
-      - studyplanet-data:/app/data   # SQLite 文件持久化，容器重建不丢数据
+      - db:/app/data              # SQLite 文件持久化，容器重建不丢数据
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 30s
@@ -28,4 +28,4 @@ services:
       start_period: 10s
 
 volumes:
-  studyplanet-data:
+  db:

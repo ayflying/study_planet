@@ -115,6 +115,22 @@ cp internal/db/migrations/000002_multi_student.down.sql internal/db/migrations/0
 
 业务查询走 sqlx 占位符 `?`，主流库通用。
 
+## 发版与 CI
+
+1. 改 `VERSION` 文件（如 `0.1.2` → `0.1.3`），提交并 push 到 `main`；
+2. GitHub Actions 自动构建镜像，推送到 GHCR 双标签：`latest` + 版本号（如 `0.1.3`）；
+3. 服务器上 `docker compose pull && docker compose up -d` 即更新到 latest。
+
+回滚到指定版本：
+
+```bash
+# 修改 docker-compose.yml 的 image 标签为历史版本号
+sed -i 's|study_planet:latest|study_planet:0.1.1|' docker-compose.yml
+docker compose up -d
+```
+
+CI 触发方式：push 到 `main` 自动触发；也可在 Actions 页面手动 `workflow_dispatch`。
+
 ## 目录结构
 
 ```

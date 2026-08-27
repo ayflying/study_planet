@@ -41,8 +41,8 @@
   .unit .u-title{font-size:17px;}
   .unit .u-sub{font-size:12px;opacity:.92;font-weight:700;margin-top:2px;}
   .unit .stars{position:absolute;top:-9px;right:-6px;display:flex;gap:2px;}
-  .unit.u-word{background:linear-gradient(135deg,#FF9F43,#F97316);box-shadow:0 8px 0 #C2410C;}
-  .unit.u-read{background:linear-gradient(135deg,#38BDF8,#0EA5E9);box-shadow:0 8px 0 #0369A1;}
+  .unit.u-words{background:linear-gradient(135deg,#FF9F43,#F97316);box-shadow:0 8px 0 #C2410C;}
+  .unit.u-reading{background:linear-gradient(135deg,#38BDF8,#0EA5E9);box-shadow:0 8px 0 #0369A1;}
   .unit.u-math{background:linear-gradient(135deg,#4ADE80,#22C55E);box-shadow:0 8px 0 #15803D;}
   .locked{filter:grayscale(.65);opacity:.62;}
   .staric{width:21px;height:21px;}
@@ -484,7 +484,6 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 
 /* ============ 渲染 ============ */
 function renderTabs(){
-  var tabs=[[home,'首页','home'],[null,'闯关','rocket']];
   document.getElementById('tabbar').innerHTML=
    '<button class="tab on" data-act="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>首页</button>'+
    '<button class="tab" data-act="home"><svg viewBox="0 0 24 24"><path d="M12 2c3 3 4 7 2.5 11L12 15.5 9.5 13C8 9 9 5 12 2z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="8" r="1.6" fill="currentColor"/><path d="M6.5 14.5c-2 .8-3 3-3 5.5 2.6 0 4.7-1 5.5-3M17.5 14.5c2 .8 3 3 3 5.5-2.6 0-4.7-1-5.5-3" fill="none" stroke="currentColor" stroke-width="2"/></svg>学习</button>';

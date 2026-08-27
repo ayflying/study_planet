@@ -5,21 +5,15 @@ services:
     build: .   # 本地调试用；服务器部署时注释掉此行以使用 CI 镜像
     container_name: studyplanet
     restart: unless-stopped
+    # 隐私配置从 .env 读取（见 .env.example 模板；.env 不入库）
+    env_file:
+      - .env
     ports:
       - "18180:8080"   # 宿主端口:容器端口；按需修改宿主端口避免冲突
     environment:
-      - DB_DSN=/app/data/studyplanet.db
-      - SERVER_PORT=8080
-      # 家长 PIN 登录（未配置 Casdoor 时启用）
-      # - PARENT_PIN=1234
-      # - JWT_SECRET=请改成随机长字符串
-      # ---- Casdoor SSO（三项配齐即自动启用，PIN 登录随之关闭）----
-      # - CASDOOR_ENDPOINT=https://casdoor.example.com
-      # - CASDOOR_CLIENT_ID=xxxxxxxx
-      # - CASDOOR_CLIENT_SECRET=xxxxxxxx
-      # - CASDOOR_ORG_NAME=built-in
-      # - CASDOOR_APP_NAME=studyplanet
-      # - CASDOOR_REDIRECT_URL=http://<your-host>:<port>/api/parent/casdoor/callback
+      # 隐私/环境配置统一放 .env（env_file 加载），此处只留非敏感注释备查：
+      # PARENT_PIN / JWT_SECRET / CASDOOR_* 均在 .env 中维护
+      - TZ=Asia/Shanghai
     volumes:
       - db:/app/data              # SQLite 文件持久化，容器重建不丢数据
     healthcheck:

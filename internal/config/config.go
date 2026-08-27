@@ -40,13 +40,13 @@ type SeedConfig struct {
 }
 
 // CasdoorConfig Casdoor SSO（OIDC 授权码流程）。三项核心配齐即视为启用。
+// 回调地址不配置，始终按用户访问的地址实时推导（见 handler.RedirectURIOf）。
 type CasdoorConfig struct {
-	Endpoint    string // 例如 https://casdoor.example.com
-	ClientID    string
+	Endpoint     string // 例如 https://casdoor.example.com
+	ClientID     string
 	ClientSecret string
 	Organization string // 组织名，用于构造授权地址；留空则用应用默认
 	Application  string // 应用名，回调 state 校验用
-	RedirectURL  string // 回调地址，留空则按 <endpoint>/api/parent/casdoor/callback 推导
 }
 
 // Enabled 判断 Casdoor 是否已配置启用。
@@ -54,8 +54,8 @@ func (c *CasdoorConfig) Enabled() bool {
 	return c.Endpoint != "" && c.ClientID != "" && c.ClientSecret != ""
 }
 
-// AuthURL 构造授权端点地址（Casdoor 标准 OIDC 路径）。
-func (c *CasdoorConfig) AuthURL() string {
+// AuthURL 构造授权端点地址（Casdoor 标准 OIDC 路径）。redirectUri 由调用方按请求传入。
+func (c *CasdoorConfig) AuthURL(redirectUri string) string {
 	org := c.Organization
 	if org == "" {
 		org = "built-in"
@@ -63,7 +63,7 @@ func (c *CasdoorConfig) AuthURL() string {
 	return strings.TrimRight(c.Endpoint, "/") + "/login/oauth/authorize" +
 		"?response_type=code" +
 		"&client_id=" + url.QueryEscape(c.ClientID) +
-		"&redirect_uri=" + url.QueryEscape(c.RedirectURL) +
+		"&redirect_uri=" + url.QueryEscape(redirectUri) +
 		"&scope=" + url.QueryEscape("read") +
 		"&state=" + url.QueryEscape(c.Application) +
 		"&org=" + url.QueryEscape(org)
@@ -119,7 +119,6 @@ func Load() *Config {
 	cfg.Casdoor.ClientSecret = getStr(c, ctx, "casdoor.clientSecret", "")
 	cfg.Casdoor.Organization = getStr(c, ctx, "casdoor.organization", "")
 	cfg.Casdoor.Application = getStr(c, ctx, "casdoor.application", "studyplanet")
-	cfg.Casdoor.RedirectURL = getStr(c, ctx, "casdoor.redirectUrl", "")
 
 	if v := os.Getenv("SERVER_PORT"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
@@ -153,9 +152,6 @@ func Load() *Config {
 	}
 	if v := os.Getenv("CASDOOR_APP_NAME"); v != "" {
 		cfg.Casdoor.Application = v
-	}
-	if v := os.Getenv("CASDOOR_REDIRECT_URL"); v != "" {
-		cfg.Casdoor.RedirectURL = v
 	}
 	return cfg
 }

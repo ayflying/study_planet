@@ -79,8 +79,9 @@ environment:
   - CASDOOR_CLIENT_SECRET=xxxxxxxx
   - CASDOOR_ORG_NAME=built-in        # 可选
   - CASDOOR_APP_NAME=studyplanet     # 可选，默认 studyplanet
-  - CASDOOR_REDIRECT_URL=http://<your-host>:<port>/api/parent/casdoor/callback  # 可选，缺省按请求推导
 ```
+
+回调地址**无需配置**：授权与回调阶段都会按用户实际访问的地址自动生成 `http(s)://<访问host>/api/parent/casdoor/callback`，并识别 `X-Forwarded-Proto` / `X-Forwarded-Host` 反代头，换域名/端口/走反向代理都不用改配置。
 
 三项核心（endpoint/client id/secret）配齐 → `GET /api/parent/auth-mode` 返回 `"mode":"casdoor"`，前端把「PIN 输入框」换成「跳转 Casdoor 登录」按钮即可；PIN 登录同时被禁用（400）。回调成功后本站 JWT 写入 `localStorage.sp_parent_jwt`。
 

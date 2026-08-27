@@ -35,22 +35,31 @@ func (s *Store) AuthMode(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"mode": "pin"})
 }
 
-// CasdoorLogin 302 跳转到 Casdoor 授权页。
+// RedirectURIOf 按本次请求的访问地址实时推导回调地址（不写死、不落配置）。
+// 依次识别 X-Forwarded-Proto / X-Forwarded-Host（反代场景），否则用请求自身 scheme+host。
+func RedirectURIOf(r *ghttp.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	} else if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.GetHost()
+	}
+	return fmt.Sprintf("%s://%s/api/parent/casdoor/callback", scheme, host)
+}
+
+// CasdoorLogin 302 跳转到 Casdoor 授权页。回调地址按用户实际访问地址实时生成。
 func (s *Store) CasdoorLogin(r *ghttp.Request) {
 	c := &s.Cfg.Casdoor
 	if !c.Enabled() {
 		s.fail(r, http.StatusBadRequest, "Casdoor 未配置")
 		return
 	}
-	if c.RedirectURL == "" {
-		// 未显式配置时，用本次请求的来源推导回调地址
-		scheme := "http"
-		if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-			scheme = "https"
-		}
-		c.RedirectURL = fmt.Sprintf("%s://%s/api/parent/casdoor/callback", scheme, r.GetHost())
-	}
-	r.Response.Header().Set("Location", c.AuthURL())
+	redirect := RedirectURIOf(r)
+	r.Response.Header().Set("Location", c.AuthURL(redirect))
 	r.Response.WriteStatus(http.StatusFound)
 }
 
@@ -75,13 +84,13 @@ func (s *Store) CasdoorCallback(r *ghttp.Request) {
 		return
 	}
 
-	// 1. 用授权码换 access_token
+	// 1. 用授权码换 access_token（redirect_uri 必须与授权时一致，同样按请求推导）
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("client_id", c.ClientID)
 	form.Set("client_secret", c.ClientSecret)
 	form.Set("code", code)
-	form.Set("redirect_uri", c.RedirectURL)
+	form.Set("redirect_uri", RedirectURIOf(r))
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, c.TokenURL(), strings.NewReader(form.Encode()))
 	if err != nil {
 		s.fail(r, 500, err.Error())

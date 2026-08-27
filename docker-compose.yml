@@ -1,0 +1,31 @@
+services:
+  studyplanet:
+    build: .
+    container_name: studyplanet
+    restart: unless-stopped
+    ports:
+      - "18180:8080"   # 宿主端口:容器端口；按需修改宿主端口避免冲突
+    environment:
+      - DB_DSN=/app/data/studyplanet.db
+      - SERVER_PORT=8080
+      # 家长 PIN 登录（未配置 Casdoor 时启用）
+      # - PARENT_PIN=1234
+      # - JWT_SECRET=请改成随机长字符串
+      # ---- Casdoor SSO（三项配齐即自动启用，PIN 登录随之关闭）----
+      # - CASDOOR_ENDPOINT=https://casdoor.example.com
+      # - CASDOOR_CLIENT_ID=xxxxxxxx
+      # - CASDOOR_CLIENT_SECRET=xxxxxxxx
+      # - CASDOOR_ORG_NAME=built-in
+      # - CASDOOR_APP_NAME=studyplanet
+      # - CASDOOR_REDIRECT_URL=http://192.168.50.217:18180/api/parent/casdoor/callback
+    volumes:
+      - studyplanet-data:/app/data   # SQLite 文件持久化，容器重建不丢数据
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  studyplanet-data:

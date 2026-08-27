@@ -1,0 +1,12 @@
+server:
+  port: 8080
+  cors: "*"
+database:
+  driver: sqlite
+  dsn: "data/grade5.db"
+parent:
+  # 首次启动会被种子数据写入 settings 表（bcrypt 哈希）；也可用 PARENT_PIN 环境变量覆盖
+  pin: "1234"
+  jwtSecret: "change-me-in-prod-please"
+seed:
+  enabled: true

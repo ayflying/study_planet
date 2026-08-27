@@ -1,0 +1,6 @@
+bin/
+data/
+.git/
+*.db
+*.db-*
+vendor/

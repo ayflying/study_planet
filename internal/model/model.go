@@ -106,3 +106,19 @@ type Parent struct {
 	CreatedAt    string `db:"created_at" json:"created_at"`
 	LastLoginAt  string `db:"last_login_at" json:"last_login_at"`
 }
+
+// PracticeSession 多邻国式练习场次（一次关卡）。
+type PracticeSession struct {
+	ID         int    `db:"id" json:"id"`
+	ChildID    int    `db:"child_id" json:"child_id"`
+	Subject    string `db:"subject" json:"subject"`
+	Level      int    `db:"level" json:"level"`
+	Total      int    `db:"total" json:"total"`
+	Correct    int    `db:"correct" json:"correct"`
+	MaxCombo   int    `db:"max_combo" json:"max_combo"`
+	Bonus      int    `db:"bonus" json:"bonus"`
+	Stars      int    `db:"stars" json:"stars"`
+	Finished   int    `db:"finished" json:"finished"`
+	CreatedAt  string `db:"created_at" json:"created_at"`
+	FinishedAt string `db:"finished_at" json:"finished_at"`
+}

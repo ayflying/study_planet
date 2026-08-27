@@ -110,7 +110,8 @@ func (s *Store) WordDetail(r *ghttp.Request) {
 func (s *Store) WordProgress(r *ghttp.Request) {
 	id := s.idParam(r)
 	var body struct {
-		Known bool `json:"known"`
+		Known     bool `json:"known"`
+		SessionID int  `json:"session_id"` // 可选：传入则走连击+场次计分
 	}
 	if err := r.Parse(&body); err != nil {
 		s.fail(r, 400, "请求格式错误")
@@ -133,6 +134,10 @@ func (s *Store) WordProgress(r *ghttp.Request) {
 	)
 	if err != nil {
 		s.fail(r, 500, err.Error())
+		return
+	}
+	if body.SessionID > 0 && body.Known {
+		s.recordAnswer(r, body.SessionID, id, true, 5, "")
 		return
 	}
 	if body.Known {
@@ -161,6 +166,7 @@ func (s *Store) ReadingAnswer(r *ghttp.Request) {
 	var body struct {
 		QuestionID int    `json:"question_id"`
 		Answer     string `json:"answer"`
+		SessionID  int    `json:"session_id"` // 可选：传入则走连击+场次计分
 	}
 	if err := r.Parse(&body); err != nil {
 		s.fail(r, 400, "请求格式错误")
@@ -172,6 +178,10 @@ func (s *Store) ReadingAnswer(r *ghttp.Request) {
 		return
 	}
 	correct := strings.EqualFold(strings.TrimSpace(q.Answer), strings.TrimSpace(body.Answer))
+	if body.SessionID > 0 {
+		s.recordAnswer(r, body.SessionID, body.QuestionID, correct, 2, "")
+		return
+	}
 	if correct {
 		if cid := s.resolveChild(r); cid > 0 {
 			s.award(cid, 2, "阅读答题:+2")
@@ -201,7 +211,8 @@ func (s *Store) ListMath(r *ghttp.Request) {
 func (s *Store) MathAnswer(r *ghttp.Request) {
 	id := s.idParam(r)
 	var body struct {
-		Answer string `json:"answer"`
+		Answer    string `json:"answer"`
+		SessionID int    `json:"session_id"` // 可选：传入则走连击+场次计分
 	}
 	if err := r.Parse(&body); err != nil {
 		s.fail(r, 400, "请求格式错误")
@@ -213,6 +224,10 @@ func (s *Store) MathAnswer(r *ghttp.Request) {
 		return
 	}
 	correct := strings.EqualFold(strings.TrimSpace(p.Answer), strings.TrimSpace(body.Answer))
+	if body.SessionID > 0 {
+		s.recordAnswer(r, body.SessionID, id, correct, 3, "")
+		return
+	}
 	if correct {
 		if cid := s.resolveChild(r); cid > 0 {
 			s.award(cid, 3, "数学答题:+3")

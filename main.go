@@ -58,13 +58,13 @@ func main() {
 		g.GET("/parent/casdoor/login", store.CasdoorLogin)
 		g.GET("/parent/casdoor/callback", store.CasdoorCallback)
 
-		// 品牌
-		g.GET("/assets/logo.svg", store.Logo)
-
-		// 学生列表：孩子端选择身份也开放
-		g.GET("/students", store.ListStudents)
+		// 孩子端开放接口
 
 		// 孩子端开放接口
+		g.GET("/students", store.ListStudents)
+		g.POST("/sessions", store.CreateSession)
+		g.GET("/sessions", store.ListSessions)
+		g.POST("/sessions/:id/finish", store.FinishSession)
 		g.GET("/words", store.ListWords)
 		g.GET("/words/:id", store.WordDetail)
 		g.POST("/words/:id/progress", store.WordProgress)
@@ -92,6 +92,11 @@ func main() {
 			pg.DELETE("/students/:id", store.DeleteStudent)
 		})
 	})
+
+	// 站点级路由：首页/学习页/logo（不在 /api 组内）
+	s.BindHandler("GET:/", store.Index)
+	s.BindHandler("GET:/app", store.Index)
+	s.BindHandler("GET:/assets/logo.svg", store.Logo)
 
 	log.Printf("学霸星球 StudyPlanet 服务端已启动，监听 :%d", cfg.Server.Port)
 	s.Run()

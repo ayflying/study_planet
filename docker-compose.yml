@@ -2,7 +2,7 @@ services:
   studyplanet:
     # 默认拉取 CI 构建的 latest 镜像；本地构建调试时加 --build 或注释掉 image 保留 build
     image: ghcr.io/ayflying/study_planet:latest
-    build: .
+    build: .   # 本地调试用；服务器部署时注释掉此行以使用 CI 镜像
     container_name: studyplanet
     restart: unless-stopped
     ports:

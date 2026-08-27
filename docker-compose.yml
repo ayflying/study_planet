@@ -1,22 +1,32 @@
 services:
-  studyplanet:
-    # 拉取 CI 构建的 latest 镜像（构建由 GitHub Actions 完成）
-    image: ghcr.io/ayflying/study_planet:latest
-    container_name: studyplanet
+  server:
+    image: ghcr.io/ayflying/study_planet-server:latest
+    container_name: studyplanet-server
     restart: unless-stopped
-    # 隐私配置从 .env 读取（见 .env.example 模板；.env 不入库）
     env_file:
       - .env
-    ports:
-      - "18180:8080"   # 宿主端口:容器端口；按需修改宿主端口避免冲突
     environment:
-      # 隐私/环境配置统一放 .env（env_file 加载），此处只留非敏感注释备查：
-      # PARENT_PIN / JWT_SECRET / CASDOOR_* 均在 .env 中维护
       - TZ=Asia/Shanghai
     volumes:
-      - db:/app/data              # SQLite 文件持久化，容器重建不丢数据
+      - db:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  client:
+    image: ghcr.io/ayflying/study_planet-client:latest
+    container_name: studyplanet-client
+    restart: unless-stopped
+    ports:
+      - "18180:8080"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ >/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -37,28 +37,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 提取镜像元数据
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.ver.outputs.version }}
-
-      - name: 构建并推送（latest + 版本号双标签）
+      - name: 构建并推送服务端（latest + 版本号）
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: server/Dockerfile
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-server:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-server:${{ steps.ver.outputs.version }}
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
 
-      - name: 输出镜像标签
-        run: |
-          echo "已推送:"
-          echo "${{ steps.meta.outputs.tags }}"
+      - name: 构建并推送客户端（latest + 版本号）
+        uses: docker/build-push-action@v6
+        with:
+          context: client
+          file: client/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-client:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-client:${{ steps.ver.outputs.version }}
+          cache-from: type=gha,scope=client
+          cache-to: type=gha,mode=max,scope=client

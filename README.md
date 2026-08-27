@@ -1,8 +1,14 @@
 # 🪐 学霸星球 StudyPlanet
 
-> 给小学生的学习闯关台服务端：单词卡片 · 语文阅读 · 数学题目 · 每日任务 · 积分奖励，家长用 Casdoor 登录，一个家长可创建并切换多个学生账号。
+> 给小学生的学习闯关工作台：客户端与服务端独立部署。单词卡片 · 语文阅读 · 数学题目 · 每日任务 · 积分奖励，家长用 Casdoor 登录，一个家长可创建并切换多个学生账号。
 
 ![logo](docs/logo.png)
+
+## 项目分层
+
+- `client/`：学习星球工作台页面、品牌资源与 Nginx 反向代理；对外提供站点入口，统一将 `/api/*` 转发到服务端。
+- `server/`：GoFrame API、SQLite 数据库迁移、种子数据与 Casdoor 登录；仅在 Docker 内网暴露 `8080`。
+- 外部访问地址维持不变：`http://<host>:18180/`。
 
 ## 功能总览
 
@@ -16,10 +22,10 @@
 ## 快速开始
 
 ```bash
-# 本地运行
-go run .          # 默认 :8080，SQLite ./data/studyplanet.db
+# 本地运行服务端 API（默认 :8080，SQLite ./data/studyplanet.db）
+cd server && go run .
 
-# Docker Compose
+# Docker Compose：client（外部入口）+ server（内部 API）
 docker compose up -d --build
 curl http://localhost:18180/api/health
 ```
@@ -119,14 +125,13 @@ cp internal/db/migrations/000002_multi_student.down.sql internal/db/migrations/0
 ## 发版与 CI
 
 1. 改 `VERSION` 文件（如 `0.1.2` → `0.1.3`），提交并 push 到 `main`；
-2. GitHub Actions 自动构建镜像，推送到 GHCR 双标签：`latest` + 版本号（如 `0.1.3`）；
-3. 服务器上 `docker compose pull && docker compose up -d` 即更新到 latest。
+2. GitHub Actions 自动构建两份镜像：`study_planet-client` 与 `study_planet-server`，各自推送 `latest` + 版本号双标签；
+3. 服务器上 `docker compose pull && docker compose up -d` 同步更新客户端和服务端。
 
 回滚到指定版本：
 
 ```bash
-# 修改 docker-compose.yml 的 image 标签为历史版本号
-sed -i 's|study_planet:latest|study_planet:0.1.1|' docker-compose.yml
+# 同时将 client 与 server image 标签改为同一历史版本号，例如 0.1.4
 docker compose up -d
 ```
 
@@ -136,24 +141,25 @@ CI 触发方式：push 到 `main` 自动触发；也可在 Actions 页面手动 
 
 ```
 studyplanet/
-├── main.go                      # 入口与路由注册
-├── internal/
-│   ├── config/config.go         # yaml + env 配置加载
-│   ├── db/
-│   │   ├── db.go                # 连接 & golang-migrate 启动迁移
-│   │   └── migrations/*.sql     # 版本化 SQL（内嵌）
-│   ├── handler/
-│   │   ├── handlers.go          # 学习/任务/积分/兑换/学生 CRUD
-│   │   ├── casdoor.go           # OIDC 授权码登录
-│   │   ├── assets.go            # Logo / 首页内嵌服务（assets/logo.png、app.html）
-│   │   └── assets/              # go:embed 内嵌资源：app.html + logo.png
-│   ├── middleware/auth.go       # CORS + 家长 JWT 鉴权
-│   ├── model/model.go           # 数据模型
-│   └── seed/seed.go             # 空库种子（示例内容）
-├── manifest/config/config.yaml
-├── docs/logo.png                # 品牌 Logo 源文件
-├── Dockerfile                   # 多阶段构建 CGO_ENABLED=0
-└── docker-compose.yml           # 卷持久化 + healthcheck
+├── client/                       # 独立客户端：原学习星球工作台界面与交互
+│   ├── index.html                # 学习航线、闯关、宠物陪伴、积分、连击、结算
+│   ├── assets/logo.png           # 客户端品牌 Logo
+│   ├── nginx.conf                # 静态托管 + /api 反代到 server
+│   └── Dockerfile                # Nginx 客户端镜像
+├── server/                       # 独立服务端：仅 API 与业务数据
+│   ├── main.go                   # API 路由注册
+│   ├── internal/
+│   │   ├── config/config.go      # yaml + env 配置加载
+│   │   ├── db/                   # 连接与内嵌迁移 SQL
+│   │   ├── handler/              # 学习、家长、Casdoor API
+│   │   ├── middleware/           # CORS + 家长 JWT 鉴权
+│   │   └── seed/                 # 空库示例数据
+│   ├── manifest/config/          # 服务端配置
+│   ├── go.mod / go.sum
+│   └── Dockerfile                # Go API 镜像
+├── docs/logo.png                 # README 品牌 Logo
+├── VERSION                        # 双镜像统一版本
+└── docker-compose.yml            # client + server + SQLite 数据卷
 ```
 
 ## 在线实例

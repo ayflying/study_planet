@@ -142,7 +142,7 @@
 <script>
 (function(){
 "use strict";
-var API = '__API_BASE__';
+var API = '/api';
 if(API.indexOf('__API')===0){ API = location.origin + '/api'; } // 本地文件兜底
 
 /* ============ 学生身份 ============ */
@@ -279,7 +279,7 @@ var UNITS=[
 ];
 
 function boot(){
-  document.getElementById('logoBox').innerHTML='<img src="LOGO_URL" width="34" height="34" style="border-radius:9px" alt="logo"/>';
+  document.getElementById('logoBox').innerHTML='<img src="/assets/logo.png" width="34" height="34" style="border-radius:9px" alt="学霸星球 logo"/>';
   renderTabs();
   Promise.all([api('/students'),api('/points'),api('/words'),api('/readings').catch(function(){return[];}),api('/math')]).then(function(rs){
     students=rs[0]||[{id:1,name:'小朋友',avatar:'🚀'}];

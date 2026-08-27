@@ -101,7 +101,8 @@ func getBool(c *gcfg.Config, ctx context.Context, key string, def bool) bool {
 }
 
 // Load 读取配置；环境变量优先级高于文件：
-//   SERVER_PORT / DB_DRIVER / DB_DSN / PARENT_PIN / JWT_SECRET
+//
+//	SERVER_PORT / DB_DRIVER / DB_DSN / PARENT_PIN / JWT_SECRET
 func Load() *Config {
 	c := g.Cfg()
 	ctx := context.Background()

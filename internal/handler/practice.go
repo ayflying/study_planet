@@ -63,10 +63,10 @@ func (s *Store) CreateSession(r *ghttp.Request) {
 
 // answerOutcome 单题作答后的实时反馈。
 type answerOutcome struct {
-	Correct    bool `json:"correct"`
-	Combo      int  `json:"combo"`       // 当前连击
-	BasePoints int  `json:"base_points"` // 本题基础得分（含连击加成）
-	ComboBonus int  `json:"combo_bonus"` // 本次触发的连击阶梯奖分
+	Correct    bool   `json:"correct"`
+	Combo      int    `json:"combo"`            // 当前连击
+	BasePoints int    `json:"base_points"`      // 本题基础得分（含连击加成）
+	ComboBonus int    `json:"combo_bonus"`      // 本次触发的连击阶梯奖分
 	Answer     string `json:"answer,omitempty"` // 正确答案（答错时反馈）
 }
 

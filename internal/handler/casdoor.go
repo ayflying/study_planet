@@ -25,9 +25,9 @@ type casdoorTokenResp struct {
 func (s *Store) AuthMode(r *ghttp.Request) {
 	if s.Cfg.Casdoor.Enabled() {
 		s.ok(r, map[string]interface{}{
-			"mode":       "casdoor",
-			"login_url":  "/api/parent/casdoor/login",
-			"endpoint":   s.Cfg.Casdoor.Endpoint,
+			"mode":        "casdoor",
+			"login_url":   "/api/parent/casdoor/login",
+			"endpoint":    s.Cfg.Casdoor.Endpoint,
 			"application": s.Cfg.Casdoor.Application,
 		})
 		return
@@ -65,10 +65,10 @@ func (s *Store) CasdoorLogin(r *ghttp.Request) {
 
 // casdoorUser Casdoor /api/userinfo 返回的用户信息（按需取子集）。
 type casdoorUser struct {
-	Sub    string `json:"sub"`
-	Name   string `json:"name"`
+	Sub               string `json:"sub"`
+	Name              string `json:"name"`
 	PreferredUsername string `json:"preferred_username"`
-	Avatar string `json:"avatar"`
+	Avatar            string `json:"avatar"`
 }
 
 // CasdoorCallback 处理授权码：换 token → 拉用户信息 → upsert parents → 签发本站 JWT。

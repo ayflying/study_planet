@@ -8,7 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jmoiron/sqlx"
 	"golang.org/x/crypto/bcrypt"
@@ -52,7 +54,7 @@ func (s *Store) resolveChild(r *ghttp.Request) int {
 	return id
 }
 
-// award 记录指定学生的积分变动（不阻塞主流程）。
+// award 记录指定学生的积分变动（不阻塞主流程，失败仅记日志）。
 func (s *Store) award(childID int, delta int, reason string) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	_, err := s.DB.Exec(
@@ -60,8 +62,7 @@ func (s *Store) award(childID int, delta int, reason string) {
 		childID, delta, reason, now,
 	)
 	if err != nil {
-		r := recover()
-		_ = r
+		g.Log().Errorf(gctx.New(), "award 记录积分失败 child=%d delta=%d: %v", childID, delta, err)
 	}
 }
 

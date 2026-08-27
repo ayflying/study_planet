@@ -13,9 +13,9 @@ type Word struct {
 }
 
 type WordProgress struct {
-	WordID      int    `db:"word_id" json:"word_id"`
-	ChildID     int    `db:"child_id" json:"child_id"`
-	Known       int    `db:"known" json:"known"`
+	WordID       int    `db:"word_id" json:"word_id"`
+	ChildID      int    `db:"child_id" json:"child_id"`
+	Known        int    `db:"known" json:"known"`
 	LastReviewed string `db:"last_reviewed" json:"last_reviewed"`
 }
 
@@ -27,14 +27,14 @@ type Reading struct {
 }
 
 type ReadingQuestion struct {
-	ID       int    `db:"id" json:"id"`
-	ReadingID int   `db:"reading_id" json:"reading_id"`
-	Question string `db:"question" json:"question"`
-	OptionA  string `db:"option_a" json:"option_a"`
-	OptionB  string `db:"option_b" json:"option_b"`
-	OptionC  string `db:"option_c" json:"option_c"`
-	OptionD  string `db:"option_d" json:"option_d"`
-	Answer   string `db:"answer" json:"answer"`
+	ID        int    `db:"id" json:"id"`
+	ReadingID int    `db:"reading_id" json:"reading_id"`
+	Question  string `db:"question" json:"question"`
+	OptionA   string `db:"option_a" json:"option_a"`
+	OptionB   string `db:"option_b" json:"option_b"`
+	OptionC   string `db:"option_c" json:"option_c"`
+	OptionD   string `db:"option_d" json:"option_d"`
+	Answer    string `db:"answer" json:"answer"`
 }
 
 type MathProblem struct {
@@ -67,10 +67,10 @@ type PointsLog struct {
 }
 
 type Reward struct {
-	ID        int    `db:"id" json:"id"`
-	Name      string `db:"name" json:"name"`
-	CostPoints int   `db:"cost_points" json:"cost_points"`
-	Status    string `db:"status" json:"status"` // active | redeemed
+	ID         int    `db:"id" json:"id"`
+	Name       string `db:"name" json:"name"`
+	CostPoints int    `db:"cost_points" json:"cost_points"`
+	Status     string `db:"status" json:"status"` // active | redeemed
 }
 
 type Redemption struct {
@@ -99,12 +99,12 @@ type Student struct {
 
 // Parent Casdoor SSO 登录后落库的家长账号。
 type Parent struct {
-	ID           int    `db:"id" json:"id"`
-	CasdoorSub   string `db:"casdoor_sub" json:"-"`
-	DisplayName  string `db:"display_name" json:"display_name"`
-	Avatar       string `db:"avatar" json:"avatar"`
-	CreatedAt    string `db:"created_at" json:"created_at"`
-	LastLoginAt  string `db:"last_login_at" json:"last_login_at"`
+	ID          int    `db:"id" json:"id"`
+	CasdoorSub  string `db:"casdoor_sub" json:"-"`
+	DisplayName string `db:"display_name" json:"display_name"`
+	Avatar      string `db:"avatar" json:"avatar"`
+	CreatedAt   string `db:"created_at" json:"created_at"`
+	LastLoginAt string `db:"last_login_at" json:"last_login_at"`
 }
 
 // PracticeSession 多邻国式练习场次（一次关卡）。

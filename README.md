@@ -6,7 +6,7 @@
 
 ## 项目分层
 
-- `client/`：学习星球工作台页面、品牌资源与 Nginx 反向代理；对外提供站点入口，统一将 `/api/*` 转发到服务端。
+- `client/`：Vue 3 + Vite 学习星球工作台，按组件维护页面和玩法；生产构建产物由 Nginx 托管，并统一将 `/api/*` 转发到服务端。
 - `server/`：GoFrame API、SQLite 数据库迁移、种子数据与 Casdoor 登录；仅在 Docker 内网暴露 `8080`。
 - 外部访问地址维持不变：`http://<host>:18180/`。
 
@@ -141,11 +141,13 @@ CI 触发方式：push 到 `main` 自动触发；也可在 Actions 页面手动 
 
 ```
 studyplanet/
-├── client/                       # 独立客户端：原学习星球工作台界面与交互
-│   ├── index.html                # 学习航线、闯关、宠物陪伴、积分、连击、结算
+├── client/                       # 独立 Vue 3 + Vite 客户端
+│   ├── src/App.vue               # 学习航线、闯关、宠物陪伴、积分、连击、结算组件
+│   ├── src/main.js / style.css   # Vue 入口与样式
 │   ├── assets/logo.png           # 客户端品牌 Logo
-│   ├── nginx.conf                # 静态托管 + /api 反代到 server
-│   └── Dockerfile                # Nginx 客户端镜像
+│   ├── vite.config.js            # 开发环境 /api 代理
+│   ├── nginx.conf                # 生产静态托管 + /api 反代到 server
+│   └── Dockerfile                # Vue 构建 + Nginx 运行镜像
 ├── server/                       # 独立服务端：仅 API 与业务数据
 │   ├── main.go                   # API 路由注册
 │   ├── internal/

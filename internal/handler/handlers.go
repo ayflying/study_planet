@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"bytes"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,9 @@ import (
 	"studyplanet/internal/config"
 	"studyplanet/internal/model"
 )
+
+// AppVersion 由构建时注入（Dockerfile -ldflags -X 写入），未注入时读 VERSION 文件。
+var AppVersion string
 
 // Store 持有数据库连接与运行配置，作为所有 handler 的接收者。
 type Store struct {
@@ -68,10 +73,22 @@ func (s *Store) idParam(r *ghttp.Request) int {
 // ---------- 健康检查 ----------
 func (s *Store) Health(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{
-		"status": "ok",
-		"time":   time.Now().Format(time.RFC3339),
-		"app":    "studyplanet",
+		"status":  "ok",
+		"time":    time.Now().Format(time.RFC3339),
+		"app":     "studyplanet",
+		"version": CurrentVersion(),
 	})
+}
+
+// CurrentVersion 返回构建注入的版本号（未注入时读 VERSION 文件，兜底 dev）。
+func CurrentVersion() string {
+	if AppVersion != "" {
+		return AppVersion
+	}
+	if b, err := os.ReadFile("VERSION"); err == nil {
+		return string(bytes.TrimSpace(b))
+	}
+	return "dev"
 }
 
 // ---------- 单词卡片 ----------

@@ -1,5 +1,7 @@
 services:
   studyplanet:
+    # 默认拉取 CI 构建的 latest 镜像；本地构建调试时加 --build 或注释掉 image 保留 build
+    image: ghcr.io/ayflying/study_planet:latest
     build: .
     container_name: studyplanet
     restart: unless-stopped
@@ -17,7 +19,7 @@ services:
       # - CASDOOR_CLIENT_SECRET=xxxxxxxx
       # - CASDOOR_ORG_NAME=built-in
       # - CASDOOR_APP_NAME=studyplanet
-      # - CASDOOR_REDIRECT_URL=http://192.168.50.217:18180/api/parent/casdoor/callback
+      # - CASDOOR_REDIRECT_URL=http://<your-host>:<port>/api/parent/casdoor/callback
     volumes:
       - db:/app/data              # SQLite 文件持久化，容器重建不丢数据
     healthcheck:

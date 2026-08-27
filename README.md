@@ -79,7 +79,7 @@ environment:
   - CASDOOR_CLIENT_SECRET=xxxxxxxx
   - CASDOOR_ORG_NAME=built-in        # 可选
   - CASDOOR_APP_NAME=studyplanet     # 可选，默认 studyplanet
-  - CASDOOR_REDIRECT_URL=http://192.168.50.217:18180/api/parent/casdoor/callback  # 可选，缺省按请求推导
+  - CASDOOR_REDIRECT_URL=http://<your-host>:<port>/api/parent/casdoor/callback  # 可选，缺省按请求推导
 ```
 
 三项核心（endpoint/client id/secret）配齐 → `GET /api/parent/auth-mode` 返回 `"mode":"casdoor"`，前端把「PIN 输入框」换成「跳转 Casdoor 登录」按钮即可；PIN 登录同时被禁用（400）。回调成功后本站 JWT 写入 `localStorage.sp_parent_jwt`。
@@ -140,5 +140,4 @@ studyplanet/
 
 ## 在线实例
 
-- 217 内网：`http://192.168.50.217:18180/api/health`
-- 宿主端口冲突时改 `docker-compose.yml` 的 `ports` 即可；SQLite 落卷 `studyplanet-data`，重建容器不丢数据。
+部署后访问 `http://<your-host>:<port>/api/health` 验证；宿主端口冲突时改 `docker-compose.yml` 的 `ports` 即可；SQLite 落卷 `db`，重建容器不丢数据。

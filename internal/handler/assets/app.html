@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>学霸星球 · 学习闯关</title>
+<link rel="icon" type="image/png" href="/assets/logo.png"/>
 <style>
   :root{
     --bg:#FFF7ED; --card:#fff; --primary:#FF8A3D; --yellow:#FFB400; --green:#2FBF71;
@@ -278,7 +279,7 @@ var UNITS=[
 ];
 
 function boot(){
-  document.getElementById('logoBox').innerHTML='<img src="'+API+'/../api/assets/logo.svg'.replace('/api/api','/api')+'" width="34" height="34" style="border-radius:9px" alt="logo"/>';
+  document.getElementById('logoBox').innerHTML='<img src="LOGO_URL" width="34" height="34" style="border-radius:9px" alt="logo"/>';
   renderTabs();
   Promise.all([api('/students'),api('/points'),api('/words'),api('/readings').catch(function(){return[];}),api('/math')]).then(function(rs){
     students=rs[0]||[{id:1,name:'小朋友',avatar:'🚀'}];

@@ -2,7 +2,7 @@
 
 > 给小学生的学习闯关台服务端：单词卡片 · 语文阅读 · 数学题目 · 每日任务 · 积分奖励，家长用 Casdoor 登录，一个家长可创建并切换多个学生账号。
 
-![logo](docs/logo.svg)
+![logo](docs/logo.png)
 
 ## 功能总览
 
@@ -33,7 +33,7 @@ curl http://localhost:18180/api/health
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/health` | 健康检查 |
-| GET | `/api/assets/logo.svg` | 品牌 Logo |
+| GET | `/assets/logo.png` | 品牌 Logo（PNG） |
 | GET | `/api/students` | 学生列表（孩子选身份） |
 | GET | `/api/parent/auth-mode` | 登录模式 `pin` / `casdoor` |
 | POST | `/api/parent/login` | PIN 登录 → `{token}`（仅 PIN 模式） |
@@ -145,12 +145,13 @@ studyplanet/
 │   ├── handler/
 │   │   ├── handlers.go          # 学习/任务/积分/兑换/学生 CRUD
 │   │   ├── casdoor.go           # OIDC 授权码登录
-│   │   └── assets.go            # Logo 内嵌服务
+│   │   ├── assets.go            # Logo / 首页内嵌服务（assets/logo.png、app.html）
+│   │   └── assets/              # go:embed 内嵌资源：app.html + logo.png
 │   ├── middleware/auth.go       # CORS + 家长 JWT 鉴权
 │   ├── model/model.go           # 数据模型
 │   └── seed/seed.go             # 空库种子（示例内容）
 ├── manifest/config/config.yaml
-├── docs/logo.svg                # 品牌 Logo 源文件
+├── docs/logo.png                # 品牌 Logo 源文件
 ├── Dockerfile                   # 多阶段构建 CGO_ENABLED=0
 └── docker-compose.yml           # 卷持久化 + healthcheck
 ```

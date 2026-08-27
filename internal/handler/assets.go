@@ -11,14 +11,14 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
-// Logo 对外提供品牌 Logo（GET /assets/logo.svg）。
+// Logo 对外提供品牌 Logo（GET /assets/logo.png）。
 func (s *Store) Logo(r *ghttp.Request) {
-	b, err := assetsFS.ReadFile("assets/logo.svg")
+	b, err := assetsFS.ReadFile("assets/logo.png")
 	if err != nil {
 		r.Response.WriteStatus(http.StatusNotFound, "logo missing")
 		return
 	}
-	r.Response.Header().Set("Content-Type", "image/svg+xml")
+	r.Response.Header().Set("Content-Type", "image/png")
 	r.Response.Header().Set("Cache-Control", "public, max-age=86400")
 	r.Response.Write(b)
 }
@@ -42,6 +42,8 @@ func (s *Store) Index(r *ghttp.Request) {
 		base = scheme + "://" + h
 	}
 	html = strings.ReplaceAll(html, "__API_BASE__", base+"/api")
+	// Logo 为站点级绝对路径，与页面同源直接可用
+	html = strings.ReplaceAll(html, "LOGO_URL", "/assets/logo.png")
 	r.Response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	r.Response.Write(html)
 }

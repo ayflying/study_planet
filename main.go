@@ -99,7 +99,8 @@ func main() {
 	s.BindHandler("HEAD:/", store.Index)
 	s.BindHandler("GET:/app", store.Index)
 	s.BindHandler("HEAD:/app", store.Index)
-	s.BindHandler("GET:/assets/logo.svg", store.Logo)
+	s.BindHandler("GET:/assets/logo.png", store.Logo)
+	s.BindHandler("HEAD:/assets/logo.png", store.Logo)
 
 	log.Printf("学霸星球 StudyPlanet 服务端已启动，监听 :%d", cfg.Server.Port)
 	s.Run()

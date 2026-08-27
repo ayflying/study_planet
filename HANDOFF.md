@@ -1,6 +1,6 @@
 # 学霸星球 StudyPlanet · 项目交接
 
-> 最后更新：2026-08-27 ｜ 版本 0.1.3 ｜ 交接给新会话直接对接用
+> 最后更新：2026-08-27 ｜ 版本 0.1.4 ｜ 交接给新会话直接对接用
 
 ## 一句话概览
 
@@ -24,8 +24,9 @@
 
 ```
 studyplanet/
-├── main.go                    # 入口：路由注册（/api 组 + 站点级 GET/HEAD /、/app、/assets/logo.svg）
-├── VERSION                    # 当前版本号，每次更新 +1（当前 0.1.3）
+├── main.go                    # 入口：路由注册（/api 组 + 站点级 GET/HEAD /、/app、/assets/logo.png）
+├── VERSION                    # 当前版本号，每次更新 +1（当前 0.1.4）
+├── logo.png                   # 品牌 Logo 源文件（与 docs/logo.png、internal/handler/assets/logo.png 同源）
 ├── .env                       # 真实隐私配置（gitignore，勿提交）：CASDOOR_ENDPOINT/CLIENT_ID/SECRET 等
 ├── .env.example               # 模板（入库）
 ├── docker-compose.yml         # 仅 image: ghcr.io/ayflying/study_planet:latest + env_file
@@ -34,11 +35,11 @@ studyplanet/
 ├── internal/
 │   ├── config/config.go       # env 读取：SERVER_PORT / DB_DSN / PARENT_PIN / JWT_SECRET / CASDOOR_*
 │   ├── db/                    # Open + Migrate；migrations/000001~000003（init、multi_student、practice_sessions）
-│   ├── handler/               # handlers.go / practice.go / casdoor.go / assets.go + assets/app.html、logo.svg
+│   ├── handler/               # handlers.go / practice.go / casdoor.go / assets.go + assets/app.html、logo.png
 │   ├── middleware/auth.go     # CORS + ParentAuth(JWT)
 │   ├── model/model.go         # 数据模型
 │   └── seed/seed.go           # 空库写入五年级示例数据（单词 10 / 阅读 / 数学 4 题）
-└── docs/logo.svg
+└── docs/logo.png
 ```
 
 ## 部署流程（标准闭环）
@@ -61,9 +62,17 @@ studyplanet/
 - **列表页/首页类派生数据优先 24h 缓存；数据库是事实来源。**
 - **数据库迁移**：启动时自动跑（幂等），新增表结构只加新 migration 文件，不改旧的。
 - **版本一致性**：VERSION 文件 = 镜像 tag = health 返回的 version（CI 通过 ldflags 注入）。
-- **不要提交**：.env、bin/、data/*.db、logo.png（未跟踪，本地草稿）。
+- **不要提交**：.env、bin/、data/*.db。
+- **品牌 Logo**：正式 logo 为根目录 `logo.png`（地球+书本）。三处同源副本：根目录源文件、`docs/logo.png`（README 用）、`internal/handler/assets/logo.png`（go:embed 内嵌，经 `/assets/logo.png` 服务）。改 logo 时三处一起换。
 - gf v2.10.3 注意：`gctx` 包不存在（用 context.Background()）；`gcfg.SetPath` 已删；`s.Run()` 无返回值。
 - 历史 bug 修复记录见 git log，典型：NULL 扫描、Compose 卷前缀名、HEAD 404（已绑 HEAD:/ 与 HEAD:/app）。
+
+## v0.1.4 更新记录（2026-08-27）
+
+- 正式启用品牌 Logo：根目录上传的 `logo.png`（地球+书本）替换旧 SVG（学士帽星球）
+- `logo.png` 内嵌进二进制（`internal/handler/assets/logo.png`），路由 `/assets/logo.png`（GET+HEAD），旧 `/assets/logo.svg` 移除
+- 修复首页 logo 一直 404 的 bug：app.html 原来拼出的 `/api/assets/logo.svg` 服务端从未注册，现改为服务端注入的站点级绝对路径 `LOGO_URL → /assets/logo.png`
+- 页面补充 favicon（同用 logo.png）
 
 ## v0.1.3 修复记录（2026-08-27）
 

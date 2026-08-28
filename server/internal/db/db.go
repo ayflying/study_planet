@@ -98,8 +98,9 @@ func appliedVersions(db *sqlx.DB) (map[int]bool, error) {
 	return applied, rows.Err()
 }
 
-// convertLegacyMigrations 兼容旧 golang-migrate 版本表：旧格式只存一行最新版本（含 dirty 列），
-// 新格式按“每个已应用版本一行”记录。检测到旧格式时，把 1..最新版本 全部补记为新格式行。
+// convertLegacyMigrations 兼容旧 golang-migrate 版本表：旧格式只有 version/dirty/ts 列、
+// 只存一行最新版本；新格式按“每个已应用版本一行”记录（version+name）。
+// 检测到旧格式时，重建为带 name 列的新表并补记 1..最新版本。
 func convertLegacyMigrations(db *sqlx.DB) error {
 	var row struct {
 		Version int
@@ -111,10 +112,19 @@ func convertLegacyMigrations(db *sqlx.DB) error {
 	if row.Dirty {
 		return fmt.Errorf("数据库存在未完成的迁移（dirty 版本 %d），请先人工修复 schema_migrations 表", row.Version)
 	}
-	for v := 1; v < row.Version; v++ {
+	if _, err := db.Exec("ALTER TABLE schema_migrations RENAME TO schema_migrations_legacy"); err != nil {
+		return fmt.Errorf("备份旧迁移版本表失败: %w", err)
+	}
+	if err := ensureMigrationsTable(db, "sqlite"); err != nil {
+		return fmt.Errorf("重建迁移版本表失败: %w", err)
+	}
+	for v := 1; v <= row.Version; v++ {
 		if _, err := db.Exec("INSERT INTO schema_migrations(version,name) VALUES(?,?)", v, fmt.Sprintf("legacy-%06d", v)); err != nil {
 			return fmt.Errorf("转换旧迁移版本记录失败（版本 %d）: %w", v, err)
 		}
+	}
+	if _, err := db.Exec("DROP TABLE schema_migrations_legacy"); err != nil {
+		return fmt.Errorf("清理旧迁移版本表失败: %w", err)
 	}
 	return nil
 }

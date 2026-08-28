@@ -50,7 +50,9 @@ const fallbackUnits = [
   { code: "math", name: "数学", icon: "∑", count: 0 }
 ];
 const units = computed(() => {
-  const list = subjects.value.length ? subjects.value : fallbackUnits;
+  const g = activeStudent.value?.grade || 0;
+  // 只显示该学段开设的学科（后端 subjects 带 min/max_grade，这里再兜底过滤）
+  const list = (subjects.value.length ? subjects.value : fallbackUnits).filter(s => !g || !s.min_grade || (g >= s.min_grade && g <= s.max_grade));
   return list.map((s, i) => ({ kind: s.code, title: s.name, sub: `${s.count || 0} 道题 · ${gradeLabel(activeStudent.value?.grade)}`, className: unitColors[i % unitColors.length], icon: s.icon || s.name[0] }));
 });
 function gradeLabel(g) { const opt = gradeOptions.find(x => x.value === (g || 1)); return opt ? opt.label : `${g || 1}年级`; }
@@ -65,7 +67,7 @@ function playFx(kind) { fx.value = kind; setTimeout(() => { if (fx.value === kin
 async function loadWrong() { try { const w = await api("/wrong-questions"); wrongCount.value = (w || []).filter(x => !Number(x.resolved)).length; } catch { wrongCount.value = 0; } }
 async function loadLeaderboard() { try { leaderboard.value = await api("/leaderboard/weekly?limit=20"); } catch { leaderboard.value = null; } }
 async function showLeaderboard() { await loadLeaderboard(); leaderboard.value = leaderboard.value || { entries: [] }; showBoard.value = true; }
-async function load() { if (!isParent.value) return; loading.value = true; try { const ss = await api("/students", { child: false }); students.value = ss || []; if (!students.value.some(s => s.id === currentStudent.value)) currentStudent.value = students.value[0]?.id || 0; try { subjects.value = await api("/subjects", { child: false }); } catch { subjects.value = []; } if (hasStudent.value) { const [pp, se] = await Promise.all([api("/points"), api("/sessions")]); points.value = pp?.total || 0; sessions.value = se || []; } } catch (e) { fail(e); } finally { loading.value = false; } }
+async function load() { if (!isParent.value) return; loading.value = true; try { const ss = await api("/students", { child: false }); students.value = ss || []; if (!students.value.some(s => s.id === currentStudent.value)) currentStudent.value = students.value[0]?.id || 0; try { subjects.value = await api(`/subjects?grade=${activeStudent.value?.grade || 0}`, { child: false }); } catch { subjects.value = []; } if (hasStudent.value) { const [pp, se] = await Promise.all([api("/points"), api("/sessions")]); points.value = pp?.total || 0; sessions.value = se || []; } } catch (e) { fail(e); } finally { loading.value = false; } }
 async function switchStudent(id) { currentStudent.value = id; localStorage.setItem("sp_stu", String(id)); view.value = "home"; await load(); await loadWrong(); }
 // 内容库出题：抽题（不含答案）→ 混入错题 → 创建场次
 async function startUnit(unit) { if (!hasStudent.value) { adminTab.value = "students"; view.value = "admin"; return; } try { const picked = await api(`/content/pick?subject=${unit.kind}&grade=${activeStudent.value?.grade || 1}&limit=5`) || []; if (!picked.length) throw new Error(`「${unit.title}」的题库还是空的，等待资料导入`); let list = picked.map(q => ({ id: q.id, type: "content", subject: q.subject, title: q.question, passage: q.passage || "", subtitle: q.topic || "", options: shuffle(q.options || []), review: false })); list = await mixWrongQuestions(unit.kind, list); if (!list.length) throw new Error("这一关还没有题目"); const s = await api("/sessions", { method: "POST", body: { subject: unit.kind, level: activeStudent.value?.grade || 1, total: list.length } }); lesson.value = unit; questions.value = list; questionIndex.value = 0; combo.value = 0; sessionId.value = s.id; result.value = null; view.value = "lesson"; } catch (e) { fail(e); } }

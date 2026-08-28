@@ -15,13 +15,23 @@ import (
 // pickToken 出题令牌：服务端把题目缓存在 questions 表外（按 token 不可行，改为
 // 无状态方案——前端每次取题集合，判分时只校验答案是否正确，题目 id 回传即可）。
 
-// ListSubjects 学科目录：GET /api/subjects
+// ListSubjects 学科目录：GET /api/subjects?grade=5
 // 返回学科列表 + 每科题量，前端动态渲染学习地图。
+// 传 grade 时只返回该学段开设的学科（如 5 年级不出物理/化学）。
 func (s *Store) ListSubjects(r *ghttp.Request) {
 	ss, err := contentlib.ListSubjects(s.DB)
 	if err != nil {
 		s.fail(r, 500, err.Error())
 		return
+	}
+	if g := r.GetQuery("grade").Int(); g >= 1 && g <= 9 {
+		filtered := make([]contentlib.Subject, 0, len(ss))
+		for _, sub := range ss {
+			if g >= sub.MinGrade && g <= sub.MaxGrade {
+				filtered = append(filtered, sub)
+			}
+		}
+		ss = filtered
 	}
 	counts, _ := contentlib.CountBySubject(s.DB)
 	type item struct {

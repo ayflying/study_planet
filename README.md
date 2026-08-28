@@ -34,6 +34,8 @@ curl http://localhost:18180/api/health
 
 ## API 一览
 
+完整接口文档（参数、响应示例、错误码）见 [docs/api.md](docs/api.md)。
+
 ### 公开接口
 
 | 方法 | 路径 | 说明 |
@@ -105,22 +107,11 @@ environment:
 | `JWT_SECRET` | change-me-in-prod | 务必改随机长字符串 |
 | `CASDOOR_*` | 空 | 见上节 |
 
-## 数据库与未来切库
+## 数据库
 
-迁移文件内嵌于二进制（`internal/db/migrations/*.sql`），启动幂等执行。新增迁移：
+支持 MySQL（生产推荐）与 SQLite（本地开发）。迁移机制、全部表结构、种子数据与 MySQL 兼容要点见 [docs/database.md](docs/database.md)。
 
-```bash
-cp internal/db/migrations/000002_multi_student.up.sql   internal/db/migrations/000003_your_change.up.sql   # 改内容
-cp internal/db/migrations/000002_multi_student.down.sql internal/db/migrations/000003_your_change.down.sql
-```
-
-当前 SQLite 用纯 Go 驱动 `modernc.org/sqlite`（CGO-free）。切换 Postgres/MySQL：
-
-1. `go get` 并 import 对应驱动；
-2. `db.Open` / `Migrate` 换驱动名与 DSN；
-3. 将 `migrations/` 复制为 `migrations/postgres/`，调整自增（`AUTOINCREMENT`→`BIGSERIAL`）与时间戳类型。
-
-业务查询走 sqlx 占位符 `?`，主流库通用。
+新增迁移：在 `server/internal/db/migrations/sqlite/` 与 `migrations/mysql/` 同步添加下一版本号脚本，启动自动执行。开发细节见 [docs/development.md](docs/development.md)。
 
 ## 发版与 CI
 
@@ -162,10 +153,24 @@ studyplanet/
 │   ├── manifest/config/          # 服务端配置
 │   ├── go.mod / go.sum
 │   └── Dockerfile                # Vue 构建 + GoFrame 运行镜像
-├── docs/logo.png                 # README 品牌 Logo
+├── docs/                         # 项目文档（架构/数据库/接口/设计/开发/部署/计划）
 ├── VERSION                        # 双镜像统一版本
 └── docker-compose.yml            # 单 GoFrame 容器 + SQLite 数据卷
 ```
+
+## 文档
+
+完整项目文档在 [docs/](docs/README.md)：
+
+| 文档 | 内容 |
+|---|---|
+| [架构](docs/architecture.md) | 技术选型、目录结构、请求链路、启动流程 |
+| [数据库](docs/database.md) | 连接配置、迁移机制、15 张表结构、种子数据 |
+| [接口](docs/api.md) | 全部 HTTP 接口参数与响应示例 |
+| [界面设计](docs/design.md) | 设计语言、页面结构、主流程、响应式规则 |
+| [开发指南](docs/development.md) | 本地开发、新增接口/迁移、双数据库兼容写法 |
+| [部署运维](docs/deployment.md) | Docker Compose、CI/CD、217 服务器、回滚 |
+| [开发计划](docs/roadmap.md) | 已完成里程碑与后续规划 |
 
 ## 在线实例
 

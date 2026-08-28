@@ -5,6 +5,7 @@
 vendor/
 client/node_modules/
 client/dist/
+.workbuddy/
 
 # 隐私配置（含真实密钥），绝不提交；模板见 .env.example
 .env

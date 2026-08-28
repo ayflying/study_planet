@@ -60,3 +60,9 @@
 .unit.his{background:linear-gradient(135deg,#FBBF24,#F59E0B);box-shadow:0 8px 0 #B45309}
 .unit.geo{background:linear-gradient(135deg,#60A5FA,#3B82F6);box-shadow:0 8px 0 #1D4ED8}
 .question .passage{max-height:180px;overflow:auto;text-align:left;background:#FBF5EB;border-radius:12px;padding:10px 13px;font-size:14px;line-height:1.7;color:#6B5A4A;margin:10px 0 0}
+
+/* 学生弹框（我的任务/奖励商店）补充样式 */
+.task-check{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#E0F2FE;color:#0284C7;font-weight:700;flex:none}
+.task-check.done{background:#DCFCE7;color:#16A34A}
+.reward button.primary{padding:6px 14px;font-size:13px}
+.reward button.primary:disabled{opacity:.45;cursor:not-allowed}

@@ -22,7 +22,7 @@ type casdoorTokenResp struct {
 }
 
 // AuthMode 告知前端当前登录模式：casdoor（未配置时为 pin）。
-func (s *Store) AuthMode(r *ghttp.Request) {
+func (s *sStudyPlanet) AuthMode(r *ghttp.Request) {
 	if s.Cfg.Casdoor.Enabled() {
 		s.ok(r, map[string]interface{}{
 			"mode":        "casdoor",
@@ -52,7 +52,7 @@ func RedirectURIOf(r *ghttp.Request) string {
 }
 
 // CasdoorLogin 302 跳转到 Casdoor 授权页。回调地址按用户实际访问地址实时生成。
-func (s *Store) CasdoorLogin(r *ghttp.Request) {
+func (s *sStudyPlanet) CasdoorLogin(r *ghttp.Request) {
 	c := &s.Cfg.Casdoor
 	if !c.Enabled() {
 		s.fail(r, http.StatusBadRequest, "Casdoor 未配置")
@@ -72,7 +72,7 @@ type casdoorUser struct {
 }
 
 // CasdoorCallback 处理授权码：换 token → 拉用户信息 → upsert parents → 签发本站 JWT。
-func (s *Store) CasdoorCallback(r *ghttp.Request) {
+func (s *sStudyPlanet) CasdoorCallback(r *ghttp.Request) {
 	c := &s.Cfg.Casdoor
 	if !c.Enabled() {
 		s.fail(r, http.StatusBadRequest, "Casdoor 未配置")
@@ -171,7 +171,7 @@ func jsQuote(v string) string {
 }
 
 // parentNameFromSub 由 casdoor_sub 取家长显示名（可选）。
-func (s *Store) parentNameFromSub(sub string) string {
+func (s *sStudyPlanet) parentNameFromSub(sub string) string {
 	var p model.Parent
 	if err := s.DB.Get(&p, "SELECT id,casdoor_sub,display_name,avatar,created_at,COALESCE(last_login_at,'') AS last_login_at FROM parents WHERE casdoor_sub=?", sub); err != nil {
 		return ""

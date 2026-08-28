@@ -19,27 +19,39 @@ import (
 	"studyplanet/internal/config"
 	"studyplanet/internal/leaderboard"
 	"studyplanet/internal/model"
+	"studyplanet/internal/service"
 )
 
 // AppVersion 由构建时注入（Dockerfile -ldflags -X 写入），未注入时读 VERSION 文件。
 var AppVersion string
 
-// Store 持有数据库连接与运行配置，作为所有 handler 的接收者。
-type Store struct {
+// sStudyPlanet 业务实现（命名符合 gf gen service 的 stPattern ^s([A-Z]\w+)$），
+// 持有数据库连接与运行配置，作为所有业务方法的接收者。
+type sStudyPlanet struct {
 	DB    *sqlx.DB
 	Cfg   *config.Config
 	Board *leaderboard.Board // 每周经验排行榜（独立模块，可为降级模式）
 }
 
-func NewStore(db *sqlx.DB, cfg *config.Config, board *leaderboard.Board) *Store {
+// SetDeps 注入运行依赖（logic 包不直接依赖 config 装配流程，由 cmd 启动时调用）。
+// 注意：init() 注册时 local 必须已是可用实例，这里填充字段而非替换实例，
+// 避免 service 层持有的接口指向旧指针。
+func SetDeps(db *sqlx.DB, cfg *config.Config, board *leaderboard.Board) *sStudyPlanet {
 	if board == nil {
 		board = leaderboard.New(db, "")
 	}
-	return &Store{DB: db, Cfg: cfg, Board: board}
+	local.DB, local.Cfg, local.Board = db, cfg, board
+	return local
 }
 
+// local 当前业务实现实例：init 注册时创建（非 nil），SetDeps 填充依赖。
+var local = &sStudyPlanet{}
+
+// Study 供外部包获取当前业务实现实例。
+func Study() *sStudyPlanet { return local }
+
 // addXP 给学生累加经验值：children.xp 总量 + 周榜（Redis/降级数据库）。
-func (s *Store) addXP(ctx context.Context, childID int, delta int) {
+func (s *sStudyPlanet) addXP(ctx context.Context, childID int, delta int) {
 	if delta == 0 {
 		return
 	}
@@ -51,17 +63,17 @@ func (s *Store) addXP(ctx context.Context, childID int, delta int) {
 	}
 }
 
-func (s *Store) ok(r *ghttp.Request, data interface{}) {
+func (s *sStudyPlanet) ok(r *ghttp.Request, data interface{}) {
 	r.Response.WriteJson(data)
 }
 
-func (s *Store) fail(r *ghttp.Request, code int, msg string) {
+func (s *sStudyPlanet) fail(r *ghttp.Request, code int, msg string) {
 	r.Response.WriteStatusExit(code, map[string]interface{}{"error": msg})
 }
 
 // resolveChild 解析本次请求对应的学生 id：查询参数 student_id，缺省为 1（兼容旧客户端）。
 // 学生不存在时返回 -1。
-func (s *Store) resolveChild(r *ghttp.Request) int {
+func (s *sStudyPlanet) resolveChild(r *ghttp.Request) int {
 	id := r.GetQuery("student_id").Int()
 	if id <= 0 {
 		id = 1
@@ -74,7 +86,7 @@ func (s *Store) resolveChild(r *ghttp.Request) int {
 }
 
 // award 记录指定学生的积分变动（不阻塞主流程，失败仅记日志）。
-func (s *Store) award(childID int, delta int, reason string) {
+func (s *sStudyPlanet) award(childID int, delta int, reason string) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	_, err := s.DB.Exec(
 		"INSERT INTO points_log(child_id,delta,reason,created_at) VALUES(?,?,?,?)",
@@ -85,13 +97,13 @@ func (s *Store) award(childID int, delta int, reason string) {
 	}
 }
 
-func (s *Store) idParam(r *ghttp.Request) int {
+func (s *sStudyPlanet) idParam(r *ghttp.Request) int {
 	id, _ := strconv.Atoi(r.Get("id").String())
 	return id
 }
 
 // ---------- 健康检查 ----------
-func (s *Store) Health(r *ghttp.Request) {
+func (s *sStudyPlanet) Health(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{
 		"status":  "ok",
 		"time":    time.Now().Format(time.RFC3339),
@@ -112,7 +124,7 @@ func CurrentVersion() string {
 }
 
 // ---------- 单词卡片 ----------
-func (s *Store) ListWords(r *ghttp.Request) {
+func (s *sStudyPlanet) ListWords(r *ghttp.Request) {
 	level := r.GetQuery("level").String()
 	q := "SELECT id,level,word,meaning,phonetic,example,created_at FROM words"
 	args := []interface{}{}
@@ -129,7 +141,7 @@ func (s *Store) ListWords(r *ghttp.Request) {
 	s.ok(r, words)
 }
 
-func (s *Store) WordDetail(r *ghttp.Request) {
+func (s *sStudyPlanet) WordDetail(r *ghttp.Request) {
 	id := s.idParam(r)
 	var w model.Word
 	if err := s.DB.Get(&w, "SELECT id,level,word,meaning,phonetic,example,created_at FROM words WHERE id=?", id); err != nil {
@@ -144,7 +156,7 @@ func (s *Store) WordDetail(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"word": w, "known": known})
 }
 
-func (s *Store) WordProgress(r *ghttp.Request) {
+func (s *sStudyPlanet) WordProgress(r *ghttp.Request) {
 	id := s.idParam(r)
 	var body struct {
 		Known     bool `json:"known"`
@@ -189,7 +201,7 @@ func (s *Store) WordProgress(r *ghttp.Request) {
 }
 
 // ---------- 语文阅读 ----------
-func (s *Store) ReadingDetail(r *ghttp.Request) {
+func (s *sStudyPlanet) ReadingDetail(r *ghttp.Request) {
 	id := s.idParam(r)
 	var rd model.Reading
 	if err := s.DB.Get(&rd, "SELECT id,title,content,level FROM readings WHERE id=?", id); err != nil {
@@ -204,7 +216,7 @@ func (s *Store) ReadingDetail(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"reading": rd, "questions": qs})
 }
 
-func (s *Store) ReadingAnswer(r *ghttp.Request) {
+func (s *sStudyPlanet) ReadingAnswer(r *ghttp.Request) {
 	var body struct {
 		QuestionID int    `json:"question_id"`
 		Answer     string `json:"answer"`
@@ -233,7 +245,7 @@ func (s *Store) ReadingAnswer(r *ghttp.Request) {
 }
 
 // ---------- 数学题目 ----------
-func (s *Store) ListMath(r *ghttp.Request) {
+func (s *sStudyPlanet) ListMath(r *ghttp.Request) {
 	level := r.GetQuery("level").String()
 	q := "SELECT id,level,type,question,options,answer,explanation FROM math_problems"
 	args := []interface{}{}
@@ -250,7 +262,7 @@ func (s *Store) ListMath(r *ghttp.Request) {
 	s.ok(r, ps)
 }
 
-func (s *Store) MathAnswer(r *ghttp.Request) {
+func (s *sStudyPlanet) MathAnswer(r *ghttp.Request) {
 	id := s.idParam(r)
 	var body struct {
 		Answer    string `json:"answer"`
@@ -279,7 +291,7 @@ func (s *Store) MathAnswer(r *ghttp.Request) {
 }
 
 // ---------- 每日任务 ----------
-func (s *Store) ListTasks(r *ghttp.Request) {
+func (s *sStudyPlanet) ListTasks(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -307,7 +319,7 @@ func (s *Store) ListTasks(r *ghttp.Request) {
 	s.ok(r, tasks)
 }
 
-func (s *Store) CompleteTask(r *ghttp.Request) {
+func (s *sStudyPlanet) CompleteTask(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -333,7 +345,7 @@ func (s *Store) CompleteTask(r *ghttp.Request) {
 }
 
 // ---------- 积分 ----------
-func (s *Store) PointsSummary(r *ghttp.Request) {
+func (s *sStudyPlanet) PointsSummary(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -353,7 +365,7 @@ func (s *Store) PointsSummary(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"total": total, "today_earned": todayEarned, "student_id": cid})
 }
 
-func (s *Store) PointsLog(r *ghttp.Request) {
+func (s *sStudyPlanet) PointsLog(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -368,7 +380,7 @@ func (s *Store) PointsLog(r *ghttp.Request) {
 }
 
 // ---------- 奖励 / 兑换 ----------
-func (s *Store) ListRewards(r *ghttp.Request) {
+func (s *sStudyPlanet) ListRewards(r *ghttp.Request) {
 	var rs []model.Reward
 	if err := s.DB.Select(&rs, "SELECT id,name,cost_points,status FROM rewards ORDER BY cost_points"); err != nil {
 		s.fail(r, 500, err.Error())
@@ -377,7 +389,7 @@ func (s *Store) ListRewards(r *ghttp.Request) {
 	s.ok(r, rs)
 }
 
-func (s *Store) Redeem(r *ghttp.Request) {
+func (s *sStudyPlanet) Redeem(r *ghttp.Request) {
 	id := s.idParam(r)
 	var rw model.Reward
 	if err := s.DB.Get(&rw, "SELECT id,name,cost_points,status FROM rewards WHERE id=?", id); err != nil {
@@ -411,7 +423,7 @@ func (s *Store) Redeem(r *ghttp.Request) {
 }
 
 // ---------- 家长端 ----------
-func (s *Store) ParentLogin(r *ghttp.Request) {
+func (s *sStudyPlanet) ParentLogin(r *ghttp.Request) {
 	// Casdoor 已配置时禁用 PIN 登录，强制走 SSO
 	if s.Cfg.Casdoor.Enabled() {
 		s.fail(r, http.StatusBadRequest, "已启用 Casdoor 登录，请使用 SSO")
@@ -442,7 +454,7 @@ func (s *Store) ParentLogin(r *ghttp.Request) {
 }
 
 // ---------- 以下为家长鉴权后接口 ----------
-func (s *Store) AddTask(r *ghttp.Request) {
+func (s *sStudyPlanet) AddTask(r *ghttp.Request) {
 	var body struct {
 		Title     string `json:"title"`
 		Type      string `json:"type"`
@@ -475,7 +487,7 @@ func (s *Store) AddTask(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"ok": true})
 }
 
-func (s *Store) DeleteTask(r *ghttp.Request) {
+func (s *sStudyPlanet) DeleteTask(r *ghttp.Request) {
 	id := s.idParam(r)
 	if _, err := daoTasks.Ctx(ctxOf()).Where("id", id).Delete(); err != nil {
 		s.fail(r, 500, err.Error())
@@ -484,7 +496,7 @@ func (s *Store) DeleteTask(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"ok": true})
 }
 
-func (s *Store) AddReward(r *ghttp.Request) {
+func (s *sStudyPlanet) AddReward(r *ghttp.Request) {
 	var body struct {
 		Name       string `json:"name"`
 		CostPoints int    `json:"cost_points"`
@@ -506,7 +518,7 @@ func (s *Store) AddReward(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"ok": true})
 }
 
-func (s *Store) ConfirmRedemption(r *ghttp.Request) {
+func (s *sStudyPlanet) ConfirmRedemption(r *ghttp.Request) {
 	id := s.idParam(r)
 	var rd model.Redemption
 	if err := s.DB.Get(&rd, "SELECT id,reward_id,status FROM redemptions WHERE id=?", id); err != nil {
@@ -535,7 +547,7 @@ func (s *Store) ConfirmRedemption(r *ghttp.Request) {
 	s.ok(r, map[string]interface{}{"ok": true})
 }
 
-func (s *Store) SetPin(r *ghttp.Request) {
+func (s *sStudyPlanet) SetPin(r *ghttp.Request) {
 	var body struct {
 		Pin string `json:"pin"`
 	}
@@ -563,7 +575,7 @@ func (s *Store) SetPin(r *ghttp.Request) {
 
 // ---------- 学生账号管理（家长鉴权后） ----------
 // ListStudents 全部学生（家长切换用）。
-func (s *Store) ListStudents(r *ghttp.Request) {
+func (s *sStudyPlanet) ListStudents(r *ghttp.Request) {
 	ctx := ctxOf()
 	var st []model.Student
 	err := daoChildren.Ctx(ctx).Order("id").Scan(&st)
@@ -575,7 +587,7 @@ func (s *Store) ListStudents(r *ghttp.Request) {
 }
 
 // CreateStudent 新建学生账号。
-func (s *Store) CreateStudent(r *ghttp.Request) {
+func (s *sStudyPlanet) CreateStudent(r *ghttp.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		Username string `json:"username"`
@@ -634,7 +646,7 @@ func (s *Store) CreateStudent(r *ghttp.Request) {
 }
 
 // UpdateStudent 修改学生信息（姓名/头像/年级/用户名）。
-func (s *Store) UpdateStudent(r *ghttp.Request) {
+func (s *sStudyPlanet) UpdateStudent(r *ghttp.Request) {
 	id := s.idParam(r)
 	var body struct {
 		Name     *string `json:"name"`
@@ -695,7 +707,7 @@ func (s *Store) UpdateStudent(r *ghttp.Request) {
 }
 
 // DeleteStudent 删除学生；至少保留一个，且清空其学习数据。
-func (s *Store) DeleteStudent(r *ghttp.Request) {
+func (s *sStudyPlanet) DeleteStudent(r *ghttp.Request) {
 	id := s.idParam(r)
 	var cnt int
 	if err := s.DB.Get(&cnt, "SELECT COUNT(*) FROM children"); err != nil {
@@ -734,4 +746,9 @@ func issueToken(secret, name string) (string, error) {
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString([]byte(secret))
+}
+
+// init 业务实现注册：service 层接口 IStudyPlanet ← logic 实现绑定（gf gen service 规范）。
+func init() {
+	service.RegisterStudyPlanet(local)
 }

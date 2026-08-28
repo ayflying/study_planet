@@ -16,9 +16,9 @@ import (
 	"studyplanet/internal/db"
 	"studyplanet/internal/gdbinit"
 	"studyplanet/internal/leaderboard"
+	"studyplanet/internal/logic/studyplanet"
 	"studyplanet/internal/seed"
 	"studyplanet/internal/seedcontent"
-	studyplanetservice "studyplanet/internal/service/studyplanet"
 )
 
 func resolveStaticRoot() string {
@@ -82,7 +82,8 @@ var Main = gcmd.Command{
 			}
 		}()
 
-		store := studyplanetservice.NewStore(sqlDB, cfg, board)
+		// 依赖注入：业务实现（logic 层 sStudyPlanet）需要 sqlx 连接、配置与排行榜模块
+		studyplanet.SetDeps(sqlDB, cfg, board)
 		s := g.Server()
 		s.SetPort(cfg.Server.Port)
 		s.SetDumpRouterMap(true)
@@ -91,7 +92,7 @@ var Main = gcmd.Command{
 			s.SetIndexFiles([]string{"index.html"})
 			s.SetFileServerEnabled(true)
 		}
-		studyplanetcontroller.BindRoutes(s, store, cfg)
+		studyplanetcontroller.BindRoutes(s, cfg)
 
 		log.Printf("学霸星球 StudyPlanet 服务端已启动，监听 :%d", cfg.Server.Port)
 		s.Run()

@@ -48,12 +48,13 @@ docker compose config
 
 ## 新增接口流程
 
-1. `server/internal/service/studyplanet/handlers.go`（或 practice.go）新增 `func (s *Store) Xxx(r *ghttp.Request)`，用 `s.ok(r, data)` / `s.fail(r, code, msg)` 返回。
-2. `server/internal/controller/studyplanet/router.go` 注册路由：
+1. `server/internal/logic/studyplanet/`（handlers.go / practice.go 等）新增 `func (s *sStudyPlanet) Xxx(r *ghttp.Request)`，用 `s.ok(r, data)` / `s.fail(r, code, msg)` 返回。
+2. 在 server 目录执行 `gf gen service`，重新生成 `internal/service` 接口与注册文件。
+3. `server/internal/controller/studyplanet/router.go` 注册路由（`logic.Xxx`，logic 变量来自 `service.StudyPlanet()`）：
    - 孩子端 → `/api` 公开组（记得处理 `student_id`）；
    - 家长端 → `/api/parent` 鉴权组。
-3. 需要新模型 → `internal/model/model.go` 加结构体（`db` + `json` tag）。
-4. 跑 `go vet` / `go test`，curl 验证后更新 `docs/api.md`。
+4. 需要新模型 → `internal/model/model.go` 加结构体（`db` + `json` tag）。
+5. 跑 `go vet` / `go test`，curl 验证后更新 `docs/api.md`。
 
 ## 新增数据库迁移
 

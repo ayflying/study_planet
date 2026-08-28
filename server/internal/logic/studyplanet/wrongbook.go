@@ -19,7 +19,7 @@ func gLog(format string, args ...interface{}) {
 
 // recordWrong 答错时登记错题（已 resolved 的重新激活，wrong_count 累加）。
 // 只做附加记录，失败不影响作答主流程。
-func (s *Store) recordWrong(childID int, subject string, refID int) {
+func (s *sStudyPlanet) recordWrong(childID int, subject string, refID int) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	_, err := s.DB.Exec(
 		`INSERT INTO wrong_questions(child_id,subject,ref_id,wrong_count,resolved,last_wrong_at) VALUES(?,?,?,1,0,?)
@@ -41,7 +41,7 @@ func (s *Store) recordWrong(childID int, subject string, refID int) {
 }
 
 // resolveWrong 巩固练习中答对后消除错题。
-func (s *Store) resolveWrong(childID int, subject string, refID int) {
+func (s *sStudyPlanet) resolveWrong(childID int, subject string, refID int) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	if _, err := s.DB.Exec(
 		"UPDATE wrong_questions SET resolved=1, last_reviewed_at=? WHERE child_id=? AND subject=? AND ref_id=?",
@@ -52,7 +52,7 @@ func (s *Store) resolveWrong(childID int, subject string, refID int) {
 }
 
 // wrongIDs 学生当前未消除的错题 id 列表（按错误次数倒序，优先巩固错得多的）。
-func (s *Store) wrongIDs(childID int, subject string, limit int) []int {
+func (s *sStudyPlanet) wrongIDs(childID int, subject string, limit int) []int {
 	if limit <= 0 {
 		return nil
 	}
@@ -99,7 +99,7 @@ func MixInWrongQuestions(freshIDs []int, wrongIDs []int, poolEvery int, wrongMax
 }
 
 // reviewRefs 构建本题集合中的错题标记（服务端自行判断，避免信任前端）。
-func (s *Store) reviewRefs(r *ghttp.Request, subject string, refIDs []int) map[int]bool {
+func (s *sStudyPlanet) reviewRefs(r *ghttp.Request, subject string, refIDs []int) map[int]bool {
 	cid := s.resolveChild(r)
 	if cid < 0 || len(refIDs) == 0 {
 		return nil
@@ -129,7 +129,7 @@ func (s *Store) reviewRefs(r *ghttp.Request, subject string, refIDs []int) map[i
 
 // WeeklyLeaderboard 周榜：GET /api/leaderboard/weekly?limit=20
 // 返回当前 ISO 周经验值最高的学生名单。
-func (s *Store) WeeklyLeaderboard(r *ghttp.Request) {
+func (s *sStudyPlanet) WeeklyLeaderboard(r *ghttp.Request) {
 	limit := r.GetQuery("limit").Int()
 	week := leaderboard.WeekKey(time.Now())
 	entries := s.Board.Top(r.Context(), week, limit, func(id int) (string, string) {
@@ -161,7 +161,7 @@ func (s *Store) WeeklyLeaderboard(r *ghttp.Request) {
 // ---------- 错题本接口 ----------
 
 // ListWrongQuestions 学生错题本：GET /api/wrong-questions?subject=
-func (s *Store) ListWrongQuestions(r *ghttp.Request) {
+func (s *sStudyPlanet) ListWrongQuestions(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")

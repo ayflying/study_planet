@@ -18,7 +18,7 @@ import (
 // ListSubjects 学科目录：GET /api/subjects?grade=5
 // 返回学科列表 + 每科题量，前端动态渲染学习地图。
 // 传 grade 时只返回该学段开设的学科（如 5 年级不出物理/化学）。
-func (s *Store) ListSubjects(r *ghttp.Request) {
+func (s *sStudyPlanet) ListSubjects(r *ghttp.Request) {
 	ss, err := contentlib.ListSubjects(s.DB)
 	if err != nil {
 		s.fail(r, 500, err.Error())
@@ -47,7 +47,7 @@ func (s *Store) ListSubjects(r *ghttp.Request) {
 
 // PickQuestions 从内容库随机抽题：GET /api/content/pick?subject=math&grade=5&limit=5
 // 返回的题目不带 answer（不泄露答案给前端），前端作答后走 /api/content/answer 判分。
-func (s *Store) PickQuestions(r *ghttp.Request) {
+func (s *sStudyPlanet) PickQuestions(r *ghttp.Request) {
 	subject := strings.TrimSpace(r.GetQuery("subject").String())
 	if subject == "" {
 		s.fail(r, 400, "subject 不能为空")
@@ -120,7 +120,7 @@ func (s *Store) PickQuestions(r *ghttp.Request) {
 
 // ContentAnswer 统一判分：POST /api/content/answer
 // body: {id, answer, session_id?}；session_id 传入则复用连击+XP+错题本链路。
-func (s *Store) ContentAnswer(r *ghttp.Request) {
+func (s *sStudyPlanet) ContentAnswer(r *ghttp.Request) {
 	var body struct {
 		ID        int    `json:"id"`
 		Answer    string `json:"answer"`
@@ -162,7 +162,7 @@ var _ = rand.Intn // 占位避免未使用告警
 
 // ContentItem 按 id 取单题（不含答案）：GET /api/content/item?id=
 // 错题本巩固复习时回取题目内容用。
-func (s *Store) ContentItem(r *ghttp.Request) {
+func (s *sStudyPlanet) ContentItem(r *ghttp.Request) {
 	id := s.idParam(r)
 	var row struct {
 		ID          int     `db:"id"`
@@ -198,7 +198,7 @@ func (s *Store) ContentItem(r *ghttp.Request) {
 // ImportContent 通用题目导入（家长身份）：POST /api/parent/content/import
 // body: {"questions": [{subject,grade,topic,qtype,passage?,question,options[],answer,explanation?,difficulty?,source?}]}
 // 按 content_hash 去重，重复导入自动跳过——以后采集新资料直接调本接口，无需改源码。
-func (s *Store) ImportContent(r *ghttp.Request) {
+func (s *sStudyPlanet) ImportContent(r *ghttp.Request) {
 	var body struct {
 		Questions []contentlib.Question `json:"questions"`
 	}
@@ -223,7 +223,7 @@ func (s *Store) ImportContent(r *ghttp.Request) {
 }
 
 // SubjectStats 内容库统计（家长端）：GET /api/parent/content/stats
-func (s *Store) SubjectStats(r *ghttp.Request) {
+func (s *sStudyPlanet) SubjectStats(r *ghttp.Request) {
 	ss, err := contentlib.ListSubjects(s.DB)
 	if err != nil {
 		s.fail(r, 500, err.Error())

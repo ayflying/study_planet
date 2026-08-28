@@ -27,7 +27,7 @@
 | 层 | 技术 | 说明 |
 |---|---|---|
 | 客户端 | Vue 3 + Vite | 单文件主组件 `App.vue` + 全局 `style.css`，无路由库 |
-| 服务端 | Go + GoFrame v2 | `gf init` 脚手架分层：cmd / controller / service / model |
+| 服务端 | Go + GoFrame v2 | `gf init` 脚手架分层：cmd / controller / logic / service / model；业务实现在 `internal/logic/studyplanet`（`sStudyPlanet`），`gf gen service` 生成 `internal/service` 接口层，controller 仅依赖接口 |
 | 数据访问 | GoFrame ORM dao + jmoiron/sqlx | 学生/任务/奖励等 CRUD 走 GF `dao` 层（`g.DB()` 数据源，`internal/gdbinit` 注册）；复杂查询、内容库与排行榜模块保留 sqlx 直连 |
 | 数据库 | MySQL（推荐）/ SQLite | 驱动：`go-sql-driver/mysql`、`glebarez/go-sqlite`（CGO-free，GF 与 sqlx 共用同一驱动注册） |
 | 迁移 | 自研轻量迁移器 | SQL 内嵌 `embed.FS`，启动时逐语句执行，版本表 `schema_migrations` |
@@ -50,11 +50,16 @@ studyplanet/
 │   ├── internal/
 │   │   ├── cmd/cmd.go               # 服务初始化：配置→数据库→迁移→种子→路由→静态资源
 │   │   ├── config/config.go         # yaml + 环境变量配置加载（env 优先）
-│   │   ├── controller/studyplanet/router.go  # 路由注册（唯一路由清单）
-│   │   ├── service/studyplanet/
-│   │   │   ├── handlers.go          # 学生/任务/积分/奖励/单词/阅读/数学 业务
-│   │   │   ├── practice.go          # 练习场次：连击、星级、XP 结算
-│   │   │   └── casdoor.go           # Casdoor OIDC 登录
+│   │   ├── controller/studyplanet/router.go  # 路由注册（唯一路由清单，调 service 接口）
+│   │   ├── service/studyplanet.go   # gf gen service 生成的接口层（IStudyPlanet + 注册桩）
+│   │   ├── logic/
+│   │   │   ├── logic.go             # gf gen service 生成的实现注册 import
+│   │   │   └── studyplanet/         # 业务实现（sStudyPlanet）
+│   │   │       ├── handlers.go      # 学生/任务/积分/奖励/单词/阅读/数学 业务
+│   │   │       ├── practice.go      # 练习场次：连击、星级、XP 结算
+│   │   │       ├── content.go       # 动态内容库：出题/判分/导入
+│   │   │       ├── wrongbook.go     # 错题本 + 周榜接口
+│   │   │       └── casdoor.go       # Casdoor OIDC 登录
 │   │   ├── middleware/auth.go       # CORS + 家长 JWT 鉴权
 │   │   ├── model/model.go           # 数据模型（db/json tag）
 │   │   ├── db/
@@ -84,8 +89,9 @@ HTTP 请求
       → /api/parent 分组中间件 ParentAuth（校验 Bearer JWT）
         → 家长管理接口
   → controller（router.go 绑定）
-    → service/studyplanet（业务 + SQL）
-      → sqlx → MySQL / SQLite
+    → service 接口（gf gen service 生成）
+      → logic/studyplanet 实现（sqlx 直查 + GF dao CRUD）
+        → MySQL / SQLite
 ```
 
 ## 启动流程（internal/cmd/cmd.go）

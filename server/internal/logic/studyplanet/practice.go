@@ -16,7 +16,7 @@ import (
 var comboBonus = map[int]int{3: 2, 5: 4, 8: 6, 10: 8}
 
 // CreateSession 开启一关：POST /api/sessions {subject, level, total, student_id}
-func (s *Store) CreateSession(r *ghttp.Request) {
+func (s *sStudyPlanet) CreateSession(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -74,7 +74,7 @@ type answerOutcome struct {
 
 // recordAnswer 场次内记一笔作答并处理积分与连击；session 必须属于该学生且未结束。
 // reviewRefs 标记哪些 ref_id 来自错题本（答对则消除错题）；可为 nil。
-func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct bool, basePoints int, answer string, reviewRefs map[int]bool) *answerOutcome {
+func (s *sStudyPlanet) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct bool, basePoints int, answer string, reviewRefs map[int]bool) *answerOutcome {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -152,14 +152,14 @@ func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct
 }
 
 // countAnswers 该场已作答题数（用于流水备注）。
-func countAnswers(s *Store, sessionID int) int {
+func countAnswers(s *sStudyPlanet, sessionID int) int {
 	var n int
 	_ = s.DB.Get(&n, "SELECT COUNT(*) FROM session_answers WHERE session_id=?", sessionID)
 	return n
 }
 
 // streakOf 最近一次答错之后到现在的连续正确数。
-func (s *Store) streakOf(sessionID int) int {
+func (s *sStudyPlanet) streakOf(sessionID int) int {
 	var rows []struct {
 		Correct int `db:"correct"`
 	}
@@ -196,7 +196,7 @@ func subjectName(subject string) string {
 // FinishSession 结算一关：POST /api/sessions/:id/finish
 // 星级规则：正确率 >=90% 三星、>=70% 两星、>=50% 一星、否则零星；
 // 三星额外奖励 10 分，两星 5 分。同一关只结算一次。
-func (s *Store) FinishSession(r *ghttp.Request) {
+func (s *sStudyPlanet) FinishSession(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -257,7 +257,7 @@ func (s *Store) FinishSession(r *ghttp.Request) {
 }
 
 // ListSessions 学生最近的练习记录（家长端统计用）：GET /api/sessions?student_id=
-func (s *Store) ListSessions(r *ghttp.Request) {
+func (s *sStudyPlanet) ListSessions(r *ghttp.Request) {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")

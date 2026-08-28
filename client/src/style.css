@@ -20,3 +20,35 @@
 .avatar-pick{display:flex;gap:7px;flex-wrap:wrap}
 .avatar-pick button{width:40px;height:40px;border:1.5px solid var(--sp-line,#ececf7);border-radius:12px;background:#fbfbfe;font-size:20px;cursor:pointer;transition:.15s}
 .avatar-pick button.picked{border-color:var(--sp-violet,#9b6cff);background:#f3edff;box-shadow:0 4px 10px rgba(155,108,255,.2)}
+/* 答题正反馈特效 + 错题本 + 周排行榜 */
+.fx-layer{position:fixed;inset:0;z-index:30;pointer-events:none;display:grid;place-items:center}
+.fx-layer>span{display:inline-flex;flex-direction:column;align-items:center;animation:fxPop .9s ease forwards}
+.fx-pop{font-size:34px;font-weight:900;color:#22b573;text-shadow:0 4px 18px rgba(34,181,115,.4)}
+.fx-combo{font-size:30px;font-weight:900;color:#ff6b2c;text-shadow:0 4px 18px rgba(255,107,44,.45)}
+.fx-combo small{font-size:16px;color:#22b573}
+.fx-wrong{font-size:20px;font-weight:800;color:#8b8ba2;background:rgba(255,255,255,.92);padding:12px 22px;border-radius:16px;box-shadow:0 10px 30px rgba(84,73,132,.18)}
+.fx-stars{font-size:56px;letter-spacing:10px;color:#ffc531;text-shadow:0 6px 24px rgba(255,197,49,.55);animation-duration:1.6s}
+@keyframes fxPop{0%{transform:scale(.4);opacity:0}30%{transform:scale(1.15);opacity:1}70%{transform:scale(1);opacity:1}100%{transform:scale(1.05) translateY(-26px);opacity:0}}
+.review-tag{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:#fff3e0;color:#f08c00;font-size:11px;font-weight:900;vertical-align:middle}
+.review-q{border:1.5px dashed #ffd29e!important}
+.result-stars{font-size:44px;letter-spacing:8px;margin:10px 0 2px;color:#ffc531}
+.result-stars i{color:#e8e4f5}
+.result-xp{margin:4px 0 14px;font-weight:900;color:#765ac2;background:#f3edff;border-radius:12px;padding:8px 18px;display:inline-block}
+.wrong-card{display:flex;align-items:center;gap:14px;padding:16px 18px;margin-top:14px;cursor:pointer;border-left:5px solid #f08c00}
+.wrong-icon{font-size:30px}
+.wrong-copy{flex:1;display:flex;flex-direction:column;gap:3px}
+.wrong-copy b{color:var(--sp-ink,#30304a)}
+.wrong-copy small{color:#8b8ba2}
+.board-dialog{max-width:420px;max-height:calc(100vh - 40px);overflow:auto;text-align:left}
+.board-dialog .close{position:absolute;top:12px;right:14px;border:0;background:#f4f2fb;color:#8b8ba2;width:30px;height:30px;border-radius:50%;font-size:16px;cursor:pointer}
+.board-list{list-style:none;margin:14px 0 8px;padding:0}
+.board-list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;margin-bottom:6px;background:#fbfbfe}
+.board-list li.me{background:#f3edff;border:1.5px solid #d9c8ff}
+.board-list li.top3{background:linear-gradient(90deg,#fff7e0,#fbfbfe)}
+.board-rank{width:32px;text-align:center;font-weight:900;color:#a07ee8}
+.board-avatar{font-size:22px}
+.board-name{flex:1;font-weight:800;color:var(--sp-ink,#30304a)}
+.board-xp{color:#22b573;font-weight:900}
+.board-empty{justify-content:center;color:#8b8ba2;font-size:13px}
+.board-mine{margin-top:10px;padding:10px 14px;border-radius:12px;background:#eefaf3;color:#1d8a5f;font-size:13px;text-align:center}
+.quick-icon.rank{background:linear-gradient(135deg,#ffc531,#ff9a3d)}

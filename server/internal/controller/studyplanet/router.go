@@ -35,6 +35,8 @@ func BindRoutes(server *ghttp.Server, store *studyplanetservice.Store, cfg *conf
 		group.GET("/points/log", store.PointsLog)
 		group.GET("/rewards", store.ListRewards)
 		group.POST("/rewards/:id/redeem", store.Redeem)
+		group.GET("/wrong-questions", store.ListWrongQuestions)
+		group.GET("/leaderboard/weekly", store.WeeklyLeaderboard)
 
 		group.Group("/parent", func(parent *ghttp.RouterGroup) {
 			parent.Middleware(middleware.ParentAuth(cfg.Parent.JWTSecret))

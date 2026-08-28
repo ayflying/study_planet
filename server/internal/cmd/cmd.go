@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcmd"
@@ -13,6 +14,7 @@ import (
 	"studyplanet/internal/config"
 	studyplanetcontroller "studyplanet/internal/controller/studyplanet"
 	"studyplanet/internal/db"
+	"studyplanet/internal/leaderboard"
 	"studyplanet/internal/seed"
 	studyplanetservice "studyplanet/internal/service/studyplanet"
 )
@@ -56,7 +58,19 @@ var Main = gcmd.Command{
 			}
 		}
 
-		store := studyplanetservice.NewStore(sqlDB, cfg)
+		// 每周经验排行榜：Redis 实时 + 每小时持久化到数据库
+		board := leaderboard.New(sqlDB, os.Getenv("REDIS_ADDR"))
+		go func() {
+			ticker := time.NewTicker(time.Hour)
+			defer ticker.Stop()
+			for range ticker.C {
+				if err := board.PersistSnapshot(context.Background()); err != nil {
+					log.Printf("周榜持久化失败: %v", err)
+				}
+			}
+		}()
+
+		store := studyplanetservice.NewStore(sqlDB, cfg, board)
 		s := g.Server()
 		s.SetPort(cfg.Server.Port)
 		s.SetDumpRouterMap(true)

@@ -2,6 +2,7 @@ package studyplanet
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"studyplanet/internal/config"
+	"studyplanet/internal/leaderboard"
 	"studyplanet/internal/model"
 )
 
@@ -25,12 +27,29 @@ var AppVersion string
 
 // Store 持有数据库连接与运行配置，作为所有 handler 的接收者。
 type Store struct {
-	DB  *sqlx.DB
-	Cfg *config.Config
+	DB    *sqlx.DB
+	Cfg   *config.Config
+	Board *leaderboard.Board // 每周经验排行榜（独立模块，可为降级模式）
 }
 
-func NewStore(db *sqlx.DB, cfg *config.Config) *Store {
-	return &Store{DB: db, Cfg: cfg}
+func NewStore(db *sqlx.DB, cfg *config.Config, board *leaderboard.Board) *Store {
+	if board == nil {
+		board = leaderboard.New(db, "")
+	}
+	return &Store{DB: db, Cfg: cfg, Board: board}
+}
+
+// addXP 给学生累加经验值：children.xp 总量 + 周榜（Redis/降级数据库）。
+func (s *Store) addXP(ctx context.Context, childID int, delta int) {
+	if delta == 0 {
+		return
+	}
+	if _, err := s.DB.Exec("UPDATE children SET xp=COALESCE(xp,0)+? WHERE id=?", delta, childID); err != nil {
+		gLog("xp 累加失败 child=%d: %v", childID, err)
+	}
+	if s.Board != nil {
+		s.Board.AddXP(ctx, childID, delta)
+	}
 }
 
 func (s *Store) ok(r *ghttp.Request, data interface{}) {
@@ -155,8 +174,13 @@ func (s *Store) WordProgress(r *ghttp.Request) {
 		s.fail(r, 500, err.Error())
 		return
 	}
-	if body.SessionID > 0 && body.Known {
-		s.recordAnswer(r, body.SessionID, id, true, 5, "")
+	if body.SessionID > 0 {
+		correct := body.Known
+		if correct {
+			s.recordAnswer(r, body.SessionID, id, true, 5, "", s.reviewRefs(r, "words", []int{id}))
+		} else {
+			s.recordAnswer(r, body.SessionID, id, false, 5, "", s.reviewRefs(r, "words", []int{id}))
+		}
 		return
 	}
 	if body.Known {
@@ -198,7 +222,7 @@ func (s *Store) ReadingAnswer(r *ghttp.Request) {
 	}
 	correct := strings.EqualFold(strings.TrimSpace(q.Answer), strings.TrimSpace(body.Answer))
 	if body.SessionID > 0 {
-		s.recordAnswer(r, body.SessionID, body.QuestionID, correct, 2, "")
+		s.recordAnswer(r, body.SessionID, body.QuestionID, correct, 2, "", s.reviewRefs(r, "reading", []int{body.QuestionID}))
 		return
 	}
 	if correct {
@@ -244,7 +268,7 @@ func (s *Store) MathAnswer(r *ghttp.Request) {
 	}
 	correct := strings.EqualFold(strings.TrimSpace(p.Answer), strings.TrimSpace(body.Answer))
 	if body.SessionID > 0 {
-		s.recordAnswer(r, body.SessionID, id, correct, 3, "")
+		s.recordAnswer(r, body.SessionID, id, correct, 3, "", s.reviewRefs(r, "math", []int{id}))
 		return
 	}
 	if correct {

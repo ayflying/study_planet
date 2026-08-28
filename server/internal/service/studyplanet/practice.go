@@ -68,10 +68,13 @@ type answerOutcome struct {
 	BasePoints int    `json:"base_points"`      // 本题基础得分（含连击加成）
 	ComboBonus int    `json:"combo_bonus"`      // 本次触发的连击阶梯奖分
 	Answer     string `json:"answer,omitempty"` // 正确答案（答错时反馈）
+	Review     bool   `json:"review"`           // 本题是否为错题巩固题
+	XP         int    `json:"xp"`               // 本次作答获得的经验值
 }
 
 // recordAnswer 场次内记一笔作答并处理积分与连击；session 必须属于该学生且未结束。
-func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct bool, basePoints int, answer string) *answerOutcome {
+// reviewRefs 标记哪些 ref_id 来自错题本（答对则消除错题）；可为 nil。
+func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct bool, basePoints int, answer string, reviewRefs map[int]bool) *answerOutcome {
 	cid := s.resolveChild(r)
 	if cid < 0 {
 		s.fail(r, 404, "学生不存在")
@@ -103,6 +106,7 @@ func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct
 	}
 
 	now := time.Now().Format("2006-01-02 15:04:05")
+	review := isReviewRef(reviewRefs, refID)
 	if _, err := s.DB.Exec(
 		"INSERT INTO session_answers(session_id,ref_id,correct,points,combo,answered_at) VALUES(?,?,?,?,?,?)",
 		sessionID, refID, boolToInt(correct), points, combo, now,
@@ -121,19 +125,28 @@ func (s *Store) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct
 				return nil
 			}
 		}
+		xp := 0
 		if points > 0 {
 			reason := fmt.Sprintf("%s 第%d题", subjectName(ps.Subject), countAnswers(s, sessionID)+1)
 			if combo >= 3 {
 				reason += fmt.Sprintf(" 连击x%d", combo)
 			}
 			s.award(cid, points, reason)
+			// 正反馈：答题得分同步转化为经验值（1:1）
+			xp = points
+			s.addXP(r.Context(), cid, xp)
 		}
-	} else if _, err := s.DB.Exec("UPDATE practice_sessions SET correct=correct WHERE id=?", sessionID); err != nil {
-		s.fail(r, 500, err.Error())
-		return nil
+		// 错题巩固答对 → 从错题本消除
+		if review {
+			s.resolveWrong(cid, ps.Subject, refID)
+		}
+		out := &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: xp}
+		s.ok(r, out)
+		return out
 	}
-
-	out := &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer}
+	// 答错 → 登记错题本
+	s.recordWrong(cid, ps.Subject, refID)
+	out := &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: 0}
 	s.ok(r, out)
 	return out
 }
@@ -225,6 +238,11 @@ func (s *Store) FinishSession(r *ghttp.Request) {
 		s.fail(r, 500, err.Error())
 		return
 	}
+	// 星级奖励：奖分（积分）+ 经验值（1 星 10 / 2 星 20 / 3 星 35）
+	xpGain := map[int]int{1: 10, 2: 20, 3: 35}[stars]
+	if xpGain > 0 {
+		s.addXP(r.Context(), cid, xpGain)
+	}
 	if bonus > 0 {
 		label := "关卡完成"
 		if stars == 3 {
@@ -234,7 +252,7 @@ func (s *Store) FinishSession(r *ghttp.Request) {
 	}
 	s.ok(r, map[string]interface{}{
 		"stars": stars, "bonus": bonus, "max_combo": ps.MaxCombo,
-		"correct": ps.Correct, "total": ps.Total,
+		"correct": ps.Correct, "total": ps.Total, "xp_gained": xpGain,
 	})
 }
 

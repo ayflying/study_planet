@@ -2,210 +2,49 @@
 import { computed, onMounted, ref } from "vue";
 
 const API = "/api";
-const students = ref([]);
-const currentStudent = ref(Number(localStorage.getItem("sp_stu") || 1));
-const points = ref(0);
-const sessions = ref([]);
-const words = ref([]);
-const math = ref([]);
-const reading = ref(null);
-const view = ref("home");
-const lesson = ref(null);
-const questions = ref([]);
-const questionIndex = ref(0);
-const combo = ref(0);
-const sessionId = ref(null);
-const result = ref(null);
-const message = ref("");
-const loading = ref(true);
-
-const units = [
-  { kind: "words", title: "单词关 · 第1关", sub: "认识 10 个单词", className: "word" },
-  { kind: "reading", title: "阅读关 · 小蚂蚁搬骨头", sub: "读短文答问题", className: "read" },
-  { kind: "math", title: "数学关 · 第1题组", sub: "计算与应用", className: "math" }
-];
-
+const students = ref([]), currentStudent = ref(Number(localStorage.getItem("sp_stu") || 1));
+const points = ref(0), sessions = ref([]), words = ref([]), math = ref([]), reading = ref(null);
+const view = ref("home"), adminTab = ref("overview"), lesson = ref(null), questions = ref([]), questionIndex = ref(0), combo = ref(0), sessionId = ref(null), result = ref(null), loading = ref(true);
+const tasks = ref([]), rewards = ref([]), logs = ref([]), parentToken = ref(localStorage.getItem("sp_parent_jwt") || ""), authMode = ref("pin"), showLogin = ref(false), pin = ref(""), error = ref(""), notice = ref("");
+const newTask = ref({ title: "", type: "学习", due_date: "", points: 5, student_id: 1 }), newReward = ref({ name: "", cost_points: 20 }), newStudent = ref({ name: "", username: "", avatar: "🐣", grade: 5 }), newPin = ref("");
+const units = [{ kind: "words", title: "单词关 · 第1关", sub: "认识 10 个单词", className: "word" }, { kind: "reading", title: "阅读关 · 小蚂蚁搬骨头", sub: "读短文答问题", className: "read" }, { kind: "math", title: "数学关 · 第1题组", sub: "计算与应用", className: "math" }];
 const activeQuestion = computed(() => questions.value[questionIndex.value]);
 const progress = computed(() => questions.value.length ? Math.round(questionIndex.value / questions.value.length * 100) : 0);
-const petMood = computed(() => combo.value >= 3 ? "wow" : "idle");
-
-function api(path, options = {}) {
-  const separator = path.includes("?") ? "&" : "?";
-  return fetch(`${API}${path}${separator}student_id=${currentStudent.value}`, {
-    method: options.method || "GET",
-    headers: { "Content-Type": "application/json" },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  }).then(async response => {
-    const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
-    return data;
-  });
-}
-
-function shuffle(items) {
-  return [...items].sort(() => Math.random() - 0.5);
-}
-
-function starCount(unit) {
-  return sessions.value.filter(item => item.subject === unit.kind && item.level === 1)
-    .reduce((best, item) => Math.max(best, item.stars || 0), 0);
-}
-
-function totalStars() {
-  return sessions.value.reduce((sum, item) => sum + (item.stars || 0), 0);
-}
-
-function maxCombo() {
-  return sessions.value.reduce((best, item) => Math.max(best, item.max_combo || 0), 0);
-}
-
-function petSvg(mood) {
-  const mouth = mood === "wow"
-    ? '<ellipse cx="60" cy="72" rx="8" ry="10" fill="#7A3B12"/><ellipse cx="60" cy="76" rx="4.5" ry="4.5" fill="#FF8FAF"/>'
-    : '<path d="M51 69 q9 8 18 0" stroke="#7A3B12" stroke-width="3.5" fill="none" stroke-linecap="round"/>';
-  return `<svg viewBox="0 0 120 120" width="112" height="112" aria-label="学习伙伴">
-    <ellipse cx="60" cy="72" rx="36" ry="34" fill="#FFCE54"/><ellipse cx="60" cy="80" rx="24" ry="20" fill="#FFE291"/>
-    <polygon points="30,48 26,24 48,40" fill="#FFCE54" stroke="#E8A400" stroke-linejoin="round" stroke-width="3"/><polygon points="90,48 94,24 72,40" fill="#FFCE54" stroke="#E8A400" stroke-linejoin="round" stroke-width="3"/>
-    <circle cx="47" cy="57" r="5.5" fill="#3A2E25"/><circle cx="73" cy="57" r="5.5" fill="#3A2E25"/><circle cx="49" cy="55" r="1.8" fill="#fff"/><circle cx="75" cy="55" r="1.8" fill="#fff"/>
-    <ellipse cx="36" cy="68" rx="6" ry="4" fill="#FFC4B8"/><ellipse cx="84" cy="68" rx="6" ry="4" fill="#FFC4B8"/>${mouth}
-    <ellipse cx="24" cy="84" rx="8" ry="6" fill="#FFCE54"/><ellipse cx="96" cy="84" rx="8" ry="6" fill="#FFCE54"/>
-  </svg>`;
-}
-
-function optionPool(answer, pool) {
-  const options = [answer];
-  shuffle(pool).forEach(item => { if (item && !options.includes(item) && options.length < 4) options.push(item); });
-  while (options.length < 4) options.push(`选项${options.length}`);
-  return shuffle(options.map(String));
-}
-
-async function load() {
-  loading.value = true;
-  try {
-    const [studentData, pointData, wordData, mathData, sessionData] = await Promise.all([
-      api("/students"), api("/points"), api("/words"), api("/math"), api("/sessions")
-    ]);
-    students.value = studentData || [];
-    points.value = pointData?.total || 0;
-    words.value = wordData || [];
-    math.value = mathData || [];
-    sessions.value = sessionData || [];
-  } catch (error) {
-    message.value = `连不上服务器：${error.message}`;
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function switchStudent(id) {
-  currentStudent.value = id;
-  localStorage.setItem("sp_stu", String(id));
-  await load();
-}
-
-async function prepareReading() {
-  if (!reading.value) reading.value = await api("/readings/1");
-}
-
-async function startUnit(unit) {
-  try {
-    if (unit.kind === "reading") await prepareReading();
-    let list = [];
-    if (unit.kind === "words") {
-      list = shuffle(words.value).slice(0, 5).map(word => ({
-        id: word.id, type: "word", title: word.word, subtitle: word.phonetic, answer: word.meaning,
-        options: optionPool(word.meaning, words.value.map(item => item.meaning))
-      }));
-    }
-    if (unit.kind === "math") {
-      list = shuffle(math.value).slice(0, 5).map(item => ({
-        id: item.id, type: "math", title: item.question, explain: item.explanation, answer: String(item.answer),
-        options: shuffle(JSON.parse(item.options || "[]").map(String))
-      }));
-    }
-    if (unit.kind === "reading") {
-      list = shuffle(reading.value?.questions || []).slice(0, 5).map(item => {
-        const raw = String(item.answer || "");
-        const options = [item.option_a, item.option_b, item.option_c, item.option_d].filter(Boolean).map(stripPrefix);
-        const answer = /^[A-D]$/.test(raw) ? options["ABCD".indexOf(raw)] : stripPrefix(raw);
-        return { id: item.id, type: "reading", title: item.question, answer, options: shuffle(options) };
-      });
-    }
-    if (!list.length) throw new Error("这一关还没有题目，让家长先添加内容吧");
-    const created = await api("/sessions", { method: "POST", body: { subject: unit.kind, level: 1, total: list.length } });
-    lesson.value = unit;
-    questions.value = list;
-    questionIndex.value = 0;
-    combo.value = 0;
-    sessionId.value = created.id;
-    view.value = "lesson";
-    message.value = "准备好闯关了吗？";
-  } catch (error) {
-    message.value = error.message;
-  }
-}
-
-function stripPrefix(value) { return String(value || "").replace(/^[A-D][.、\s]\s*/, ""); }
-
-async function selectOption(option) {
-  const question = activeQuestion.value;
-  if (!question || question.picked) return;
-  question.picked = option;
-  question.correct = option === question.answer;
-  try {
-    let response;
-    if (question.type === "word") response = await api(`/words/${question.id}/progress`, { method: "POST", body: { known: question.correct, session_id: sessionId.value } });
-    else if (question.type === "math") response = await api(`/math/${question.id}/answer`, { method: "POST", body: { answer: option, session_id: sessionId.value } });
-    else response = await api("/readings/1/answer", { method: "POST", body: { question_id: question.id, answer: option, session_id: sessionId.value } });
-    question.correct = response.correct ?? question.correct;
-    combo.value = question.correct ? (response.combo || combo.value + 1) : 0;
-    message.value = question.correct ? (combo.value >= 3 ? `太棒了！连击 x${combo.value}` : "答对了哦！") : (question.explain ? `解析：${question.explain}` : "没关系，再想想～");
-  } catch {
-    combo.value = 0;
-    message.value = "提交失败，请检查网络后重试。";
-  }
-}
-
-async function nextQuestion() {
-  if (questionIndex.value + 1 < questions.value.length) { questionIndex.value += 1; return; }
-  try {
-    result.value = await api(`/sessions/${sessionId.value}/finish`, { method: "POST" });
-    const pointData = await api("/points");
-    points.value = pointData?.total || points.value;
-    sessions.value = await api("/sessions");
-  } catch (error) { message.value = `结算失败：${error.message}`; }
-}
-
-function backHome() {
-  result.value = null;
-  view.value = "home";
-  message.value = "我在这儿陪你学习～";
-}
-
-onMounted(load);
+const isParent = computed(() => !!parentToken.value);
+function api(path, options = {}) { const sep = path.includes("?") ? "&" : "?"; const headers = { "Content-Type": "application/json", ...(options.headers || {}) }; if (parentToken.value) headers.Authorization = `Bearer ${parentToken.value}`; return fetch(`${API}${path}${options.child === false ? "" : `${sep}student_id=${currentStudent.value}`}`, { ...options, headers, body: options.body ? JSON.stringify(options.body) : undefined }).then(async r => { const data = await r.json().catch(() => null); if (!r.ok) throw new Error(data?.error || `请求失败（${r.status}）`); return data; }); }
+function fail(e) { error.value = e.message || String(e); }
+function shuffle(a) { return [...a].sort(() => Math.random() - .5); }
+function starCount(u) { return sessions.value.filter(x => x.subject === u.kind && x.level === 1).reduce((b, x) => Math.max(b, x.stars || 0), 0); }
+function totalStars() { return sessions.value.reduce((s, x) => s + (x.stars || 0), 0); }
+function maxCombo() { return sessions.value.reduce((b, x) => Math.max(b, x.max_combo || 0), 0); }
+function optionPool(answer, pool) { const o = [String(answer)]; shuffle(pool).forEach(x => { if (x && !o.includes(String(x)) && o.length < 4) o.push(String(x)); }); while (o.length < 4) o.push(`选项${o.length}`); return shuffle(o); }
+async function load() { loading.value = true; try { const [ss, pp, ww, mm, se] = await Promise.all([api("/students"), api("/points"), api("/words"), api("/math"), api("/sessions")]); students.value = ss || []; points.value = pp?.total || 0; words.value = ww || []; math.value = mm || []; sessions.value = se || []; if (!students.value.some(s => s.id === currentStudent.value) && students.value[0]) currentStudent.value = students.value[0].id; } catch (e) { fail(e); } finally { loading.value = false; } }
+async function switchStudent(id) { currentStudent.value = id; localStorage.setItem("sp_stu", String(id)); await load(); if (view.value === "admin") await loadAdmin(); }
+async function startUnit(unit) { try { if (unit.kind === "reading" && !reading.value) reading.value = await api("/readings/1"); let list = []; if (unit.kind === "words") list = shuffle(words.value).slice(0, 5).map(w => ({ id: w.id, type: "word", title: w.word, subtitle: w.phonetic, answer: w.meaning, options: optionPool(w.meaning, words.value.map(x => x.meaning)) })); if (unit.kind === "math") list = shuffle(math.value).slice(0, 5).map(x => ({ id: x.id, type: "math", title: x.question, answer: String(x.answer), explain: x.explanation, options: JSON.parse(x.options || "[]").map(String) })); if (unit.kind === "reading") list = shuffle(reading.value?.questions || []).slice(0, 5).map(x => { const o = [x.option_a, x.option_b, x.option_c, x.option_d].filter(Boolean).map(strip); const a = /^[A-D]$/.test(x.answer) ? o["ABCD".indexOf(x.answer)] : strip(x.answer); return { id: x.id, type: "reading", title: x.question, answer: a, options: shuffle(o) }; }); if (!list.length) throw new Error("这一关还没有题目"); const s = await api("/sessions", { method: "POST", body: { subject: unit.kind, level: 1, total: list.length } }); lesson.value = unit; questions.value = list; questionIndex.value = 0; combo.value = 0; sessionId.value = s.id; result.value = null; view.value = "lesson"; } catch (e) { fail(e); } }
+function strip(v) { return String(v || "").replace(/^[A-D][.、\s]\s*/, ""); }
+async function selectOption(o) { const q = activeQuestion.value; if (!q || q.picked) return; q.picked = o; q.correct = o === q.answer; try { let r; if (q.type === "word") r = await api(`/words/${q.id}/progress`, { method: "POST", body: { known: q.correct, session_id: sessionId.value } }); else if (q.type === "math") r = await api(`/math/${q.id}/answer`, { method: "POST", body: { answer: o, session_id: sessionId.value } }); else r = await api("/readings/1/answer", { method: "POST", body: { question_id: q.id, answer: o, session_id: sessionId.value } }); q.correct = r.correct ?? q.correct; combo.value = q.correct ? (r.combo || combo.value + 1) : 0; } catch (e) { fail(e); } }
+async function nextQuestion() { if (questionIndex.value + 1 < questions.value.length) { questionIndex.value++; return; } try { result.value = await api(`/sessions/${sessionId.value}/finish`, { method: "POST" }); await load(); } catch (e) { fail(e); } }
+function backHome() { result.value = null; view.value = "home"; }
+async function loadAuth() { try { authMode.value = (await api("/parent/auth-mode", { child: false })).mode || "pin"; } catch {} }
+async function login() { try { const r = await api("/parent/login", { method: "POST", child: false, body: { pin: pin.value } }); parentToken.value = r.token; localStorage.setItem("sp_parent_jwt", r.token); showLogin.value = false; pin.value = ""; await loadAdmin(); view.value = "admin"; } catch (e) { fail(e); } }
+function logout() { parentToken.value = ""; localStorage.removeItem("sp_parent_jwt"); view.value = "home"; }
+async function loadAdmin() { if (!isParent.value) return; try { const [tt, rr, ll] = await Promise.all([api(`/tasks?student_id=${currentStudent.value}`, { child: false }), api("/rewards", { child: false }), api(`/points/log?student_id=${currentStudent.value}`, { child: false })]); tasks.value = tt || []; rewards.value = rr || []; logs.value = ll || []; } catch (e) { fail(e); } }
+async function addTask() { try { await api("/parent/tasks", { method: "POST", child: false, body: { ...newTask.value, student_id: currentStudent.value } }); newTask.value = { title: "", type: "学习", due_date: "", points: 5, student_id: currentStudent.value }; notice.value = "任务已发布"; await loadAdmin(); } catch (e) { fail(e); } }
+async function addReward() { try { await api("/parent/rewards", { method: "POST", child: false, body: newReward.value }); newReward.value = { name: "", cost_points: 20 }; notice.value = "奖励已添加"; await loadAdmin(); } catch (e) { fail(e); } }
+async function addStudent() { try { await api("/parent/students", { method: "POST", child: false, body: newStudent.value }); newStudent.value = { name: "", username: "", avatar: "🐣", grade: 5 }; notice.value = "学生已创建"; await load(); await loadAdmin(); } catch (e) { fail(e); } }
+async function deleteStudent(id) { if (!confirm("确定删除这个学生及其学习数据吗？")) return; try { await api(`/parent/students/${id}`, { method: "DELETE", child: false }); await load(); await loadAdmin(); } catch (e) { fail(e); } }
+async function deleteTask(id) { try { await api(`/parent/tasks/${id}`, { method: "DELETE", child: false }); await loadAdmin(); } catch (e) { fail(e); } }
+async function savePin() { try { await api("/parent/set-pin", { method: "POST", child: false, body: { pin: newPin.value } }); newPin.value = ""; notice.value = "PIN 已更新"; } catch (e) { fail(e); } }
+onMounted(async () => { await loadAuth(); await load(); if (isParent.value) await loadAdmin(); });
 </script>
 
 <template>
   <main class="shell">
-    <header class="topbar">
-      <div class="brand"><div class="logo"><img src="/assets/logo.png" alt="学霸星球 logo" /></div><div><h1>学霸星球</h1><p>今天也要闯关哦</p></div></div>
-      <div class="xp-ring"><strong>{{ points }}</strong><span>积分</span></div>
-    </header>
-
+    <header class="topbar"><div class="brand"><div class="logo"><img src="/assets/logo.png" alt="学霸星球" /></div><div><h1>学霸星球</h1><p>{{ view === 'admin' ? '家长管理工作台' : '今天也要闯关哦' }}</p></div></div><div class="top-actions"><div class="xp-ring"><strong>{{ points }}</strong><span>积分</span></div><button class="parent-entry" @click="isParent ? (view = 'admin', loadAdmin()) : (showLogin = true)">{{ isParent ? '家长管理' : '家长登录' }}</button></div></header>
     <section v-if="loading" class="card loading">正在装载学习星球…</section>
-    <section v-else-if="view === 'home'">
-      <div class="students"><button v-for="student in students" :key="student.id" class="student" :class="{ active: student.id === currentStudent }" @click="switchStudent(student.id)"><span>{{ student.avatar || '🐣' }}</span>{{ student.name }}</button></div>
-      <div class="path card"><h2>🌎 学习星球航线</h2><button v-for="unit in units" :key="unit.kind" class="unit" :class="unit.className" @click="startUnit(unit)"><span class="stars">{{ '★'.repeat(starCount(unit)) }}<i>{{ '☆'.repeat(3 - starCount(unit)) }}</i></span><strong>{{ unit.title }}</strong><small>{{ unit.sub }} · 点击开始</small></button></div>
-      <div class="pet-zone"><div class="bubble">{{ message || '准备好闯关了吗？' }}</div><div class="pet" :class="petMood" v-html="petSvg(petMood)" /></div>
-      <div class="stats"><div><b>{{ points }}</b><span>我的积分</span></div><div><b>{{ maxCombo() }}</b><span>最高连击</span></div><div><b>{{ totalStars() }}</b><span>总星星</span></div></div>
-    </section>
-
-    <section v-else class="lesson">
-      <div class="lesson-top"><button class="close" @click="view = 'home'">×</button><div class="progress"><i :style="{ width: `${progress}%` }" /></div><b v-if="combo >= 2">🔥x{{ combo }}</b></div>
-      <article v-if="activeQuestion" class="card question"><p>{{ { word: '听一听 · 选释义', math: '算一算', reading: '读一读 · 选一选' }[activeQuestion.type] }}</p><h2>{{ activeQuestion.title }}</h2><em v-if="activeQuestion.subtitle">{{ activeQuestion.subtitle }}</em><div class="options"><button v-for="option in activeQuestion.options" :key="option" :disabled="activeQuestion.picked" :class="{ right: activeQuestion.picked && option === activeQuestion.answer, wrong: activeQuestion.picked === option && !activeQuestion.correct }" @click="selectOption(option)">{{ option }}</button></div><button v-if="activeQuestion.picked" class="continue" @click="nextQuestion">{{ questionIndex + 1 < questions.length ? '继续 →' : '完成关卡 ✓' }}</button></article>
-      <div class="pet-zone compact"><div class="bubble">{{ message }}</div><div class="pet" v-html="petSvg(activeQuestion?.correct ? 'wow' : 'idle')" /></div>
-    </section>
-
-    <div v-if="result" class="modal"><section class="result card"><div class="big-stars">{{ '★'.repeat(result.stars || 0) }}<i>{{ '☆'.repeat(3 - (result.stars || 0)) }}</i></div><h2>{{ ['再接再厉！', '不错哦！', '太棒了！', '完美通关！'][result.stars || 0] }}</h2><p>答对 {{ result.correct }}/{{ result.total }} 题 · 最高连击 x{{ result.max_combo }}</p><div class="stats"><div><b>{{ result.stars }}/3</b><span>星星</span></div><div><b>x{{ result.max_combo }}</b><span>连击</span></div><div><b>+{{ result.bonus }}</b><span>奖分</span></div></div><button class="continue" @click="backHome">回星球 🏠</button></section></div>
+    <template v-else-if="view === 'home'"><div class="students"><button v-for="s in students" :key="s.id" class="student" :class="{ active: s.id === currentStudent }" @click="switchStudent(s.id)"><span>{{ s.avatar || '🐣' }}</span>{{ s.name }}</button></div><div class="path card"><h2>🌎 学习星球航线</h2><button v-for="u in units" :key="u.kind" class="unit" :class="u.className" @click="startUnit(u)"><span class="stars">{{ '★'.repeat(starCount(u)) }}<i>{{ '☆'.repeat(3 - starCount(u)) }}</i></span><strong>{{ u.title }}</strong><small>{{ u.sub }} · 点击开始</small></button></div><div class="quick-grid"><button @click="isParent ? (adminTab='tasks', view='admin', loadAdmin()) : (showLogin=true)">今日任务 <b>{{ isParent ? tasks.filter(t => t.status !== 'done').length : '家长管理' }}</b></button><button @click="isParent ? (adminTab='rewards', view='admin', loadAdmin()) : (showLogin=true)">奖励兑换 <b>{{ isParent ? '去管理' : '家长登录' }}</b></button></div><div class="pet-zone"><div class="bubble">准备好闯关了吗？</div><div class="pet">🌟</div></div><div class="stats"><div><b>{{ points }}</b><span>我的积分</span></div><div><b>{{ maxCombo() }}</b><span>最高连击</span></div><div><b>{{ totalStars() }}</b><span>总星星</span></div></div></template>
+    <section v-else-if="view === 'lesson'" class="lesson"><div class="lesson-top"><button class="close" @click="view='home'">×</button><div class="progress"><i :style="{ width: `${progress}%` }" /></div><b v-if="combo >= 2">🔥x{{ combo }}</b></div><article v-if="activeQuestion" class="card question"><p>{{ { word: '听一听 · 选释义', math: '算一算', reading: '读一读 · 选一选' }[activeQuestion.type] }}</p><h2>{{ activeQuestion.title }}</h2><em>{{ activeQuestion.subtitle }}</em><div class="options"><button v-for="o in activeQuestion.options" :key="o" :disabled="activeQuestion.picked" :class="{ right: activeQuestion.picked && o === activeQuestion.answer, wrong: activeQuestion.picked === o && !activeQuestion.correct }" @click="selectOption(o)">{{ o }}</button></div><button v-if="activeQuestion.picked" class="continue" @click="nextQuestion">{{ questionIndex + 1 < questions.length ? '继续 →' : '完成关卡 ✓' }}</button></article></section>
+    <section v-else class="admin card"><nav class="admin-nav"><button :class="{active:adminTab==='overview'}" @click="adminTab='overview'">总览</button><button :class="{active:adminTab==='students'}" @click="adminTab='students'">学生管理</button><button :class="{active:adminTab==='tasks'}" @click="adminTab='tasks'">任务管理</button><button :class="{active:adminTab==='rewards'}" @click="adminTab='rewards'">奖励兑换</button><button :class="{active:adminTab==='logs'}" @click="adminTab='logs'">积分流水</button><button :class="{active:adminTab==='settings'}" @click="adminTab='settings'">设置</button></nav><div class="admin-head"><button @click="view='home'">← 回到学生工作台</button><button class="danger-link" @click="logout">退出登录</button></div><div v-if="adminTab==='overview'" class="panel"><h2>家长管理工作台</h2><p class="muted">管理孩子的学习任务、奖励和成长记录。</p><div class="overview-grid"><div><b>{{ students.length }}</b><span>学生</span></div><div><b>{{ tasks.filter(t=>t.status!=='done').length }}</b><span>待完成任务</span></div><div><b>{{ rewards.length }}</b><span>可兑换奖励</span></div><div><b>{{ points }}</b><span>当前积分</span></div></div></div><div v-if="adminTab==='students'" class="panel"><h2>学生管理</h2><div class="form-row"><input v-model="newStudent.name" placeholder="姓名" /><input v-model="newStudent.username" placeholder="用户名（可选）" /><input v-model="newStudent.avatar" placeholder="头像" /><input v-model.number="newStudent.grade" type="number" placeholder="年级" /><button class="primary" @click="addStudent">新增学生</button></div><div class="list"><div v-for="s in students" :key="s.id" class="list-row"><span class="avatar">{{ s.avatar || '🐣' }}</span><strong>{{ s.name }}</strong><small>五年级 · {{ s.username || '未设置用户名' }}</small><button class="danger-link" @click="deleteStudent(s.id)">删除</button></div></div></div><div v-if="adminTab==='tasks'" class="panel"><h2>任务管理</h2><div class="form-row"><input v-model="newTask.title" placeholder="任务名称" /><input v-model="newTask.due_date" type="date" /><input v-model.number="newTask.points" type="number" min="1" placeholder="奖励积分" /><button class="primary" @click="addTask">发布任务</button></div><div class="list"><div v-for="t in tasks" :key="t.id" class="list-row"><strong>{{ t.title }}</strong><small>{{ t.due_date || '无截止日期' }} · +{{ t.points }} 分 · {{ t.status }}</small><button class="danger-link" @click="deleteTask(t.id)">删除</button></div><p v-if="!tasks.length" class="empty">还没有任务，发布一个学习目标吧。</p></div></div><div v-if="adminTab==='rewards'" class="panel"><h2>奖励兑换</h2><div class="form-row"><input v-model="newReward.name" placeholder="奖励名称" /><input v-model.number="newReward.cost_points" type="number" min="1" placeholder="所需积分" /><button class="primary" @click="addReward">添加奖励</button></div><div class="reward-grid"><div v-for="r in rewards" :key="r.id" class="reward"><strong>🎁 {{ r.name }}</strong><span>{{ r.cost_points }} 积分</span><button @click="api(`/rewards/${r.id}/redeem`).then(()=>notice='兑换申请已提交').catch(fail)">兑换</button></div></div></div><div v-if="adminTab==='logs'" class="panel"><h2>积分流水</h2><div class="list"><div v-for="l in logs" :key="l.id" class="list-row"><strong :class="l.delta>0?'gain':'loss'">{{ l.delta>0?'+':'' }}{{ l.delta }}</strong><span>{{ l.reason }}</span><small>{{ l.created_at }}</small></div><p v-if="!logs.length" class="empty">暂无积分记录。</p></div></div><div v-if="adminTab==='settings'" class="panel"><h2>账号设置</h2><p class="muted">修改家长 PIN，建议使用不易被孩子猜到的数字。</p><div class="form-row"><input v-model="newPin" type="password" placeholder="新的 PIN" /><button class="primary" @click="savePin">保存 PIN</button></div></div></section>
+    <div v-if="result" class="modal"><section class="result card"><h2>闯关完成！</h2><p>答对 {{ result.correct }}/{{ result.total }} 题 · 最高连击 x{{ result.max_combo }}</p><button class="continue" @click="backHome">回星球</button></section></div><div v-if="showLogin" class="modal"><section class="dialog card"><button class="close" @click="showLogin=false">×</button><h2>家长登录</h2><p v-if="authMode==='casdoor'">当前使用 Casdoor 账号登录</p><a v-if="authMode==='casdoor'" class="primary button-link" href="/api/parent/casdoor/login">跳转 Casdoor 登录</a><template v-else><p class="muted">输入家长 PIN 进入管理工作台</p><input v-model="pin" type="password" placeholder="家长 PIN" @keyup.enter="login" /><button class="primary" @click="login">登录管理</button></template></section></div><div v-if="error" class="modal"><section class="dialog card"><h2>操作未完成</h2><p>{{ error }}</p><button class="primary" @click="error=''">知道了</button></section></div><div v-if="notice" class="modal"><section class="dialog card"><h2>已完成</h2><p>{{ notice }}</p><button class="primary" @click="notice=''">好的</button></section></div>
   </main>
 </template>

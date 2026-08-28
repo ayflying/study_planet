@@ -1,0 +1,34 @@
+-- 000005 动态内容库：学科目录 + 统一题库（SQLite 方言）
+
+CREATE TABLE IF NOT EXISTS subjects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '',
+  min_grade INTEGER NOT NULL DEFAULT 1,
+  max_grade INTEGER NOT NULL DEFAULT 9,
+  sort INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS questions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  subject TEXT NOT NULL,
+  grade INTEGER NOT NULL DEFAULT 1,
+  topic TEXT NOT NULL DEFAULT '',
+  qtype TEXT NOT NULL DEFAULT 'choice',
+  passage TEXT NULL,
+  question TEXT NOT NULL,
+  options TEXT NOT NULL DEFAULT '[]',
+  answer TEXT NOT NULL,
+  explanation TEXT NULL,
+  difficulty INTEGER NOT NULL DEFAULT 1,
+  source TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_questions_pick ON questions(subject, enabled, grade);
+CREATE INDEX IF NOT EXISTS idx_questions_grade ON questions(grade);

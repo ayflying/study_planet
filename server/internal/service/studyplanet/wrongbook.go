@@ -188,6 +188,12 @@ func (s *Store) ListWrongQuestions(r *ghttp.Request) {
 			s.fail(r, 500, err.Error())
 			return
 		}
+		// MySQL 驱动把 VARCHAR 扫成 []byte，这里统一转字符串（避免 JSON 输出 base64）
+		for k, v := range m {
+			if b, isBytes := v.([]byte); isBytes {
+				m[k] = string(b)
+			}
+		}
 		ws = append(ws, m)
 	}
 	if ws == nil {

@@ -35,6 +35,10 @@ func BindRoutes(server *ghttp.Server, store *studyplanetservice.Store, cfg *conf
 		group.GET("/points/log", store.PointsLog)
 		group.GET("/rewards", store.ListRewards)
 		group.POST("/rewards/:id/redeem", store.Redeem)
+		group.GET("/subjects", store.ListSubjects)
+		group.GET("/content/pick", store.PickQuestions)
+		group.GET("/content/item", store.ContentItem)
+		group.POST("/content/answer", store.ContentAnswer)
 		group.GET("/wrong-questions", store.ListWrongQuestions)
 		group.GET("/leaderboard/weekly", store.WeeklyLeaderboard)
 
@@ -48,6 +52,8 @@ func BindRoutes(server *ghttp.Server, store *studyplanetservice.Store, cfg *conf
 			parent.POST("/students", store.CreateStudent)
 			parent.PUT("/students/:id", store.UpdateStudent)
 			parent.DELETE("/students/:id", store.DeleteStudent)
+			parent.POST("/content/import", store.ImportContent)
+			parent.GET("/content/stats", store.SubjectStats)
 		})
 	})
 }

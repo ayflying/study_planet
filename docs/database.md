@@ -40,7 +40,9 @@ server/internal/db/migrations/
 
 > 历史备注：曾尝试 golang-migrate v4.19.1，其 MySQL 驱动不支持多语句且失败后留下 dirty 标记导致迁移被跳过，故替换为逐语句自研迁移器。
 
-## 表结构（MySQL，共 15 张表）
+## 表结构（MySQL，共 19 张表）
+
+> 000004 新增 wrong_questions / leaderboard_weekly（children 加 xp 列）；000005 新增 subjects / questions 动态内容库。
 
 ### children 学生档案
 
@@ -193,6 +195,46 @@ server/internal/db/migrations/
 | points | INT | 本题得分（含连击加成） |
 | combo | INT | 作答后连击数 |
 | answered_at | TIMESTAMP | |
+
+## 动态内容库（000005）
+
+学习内容全部入库：**新增/更新题目只导数据，不改源码**。
+
+### subjects 学科目录
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| id | BIGINT PK | |
+| code | VARCHAR(32) UNIQUE | english/chinese/math/physics/chemistry/biology/history/geography |
+| name | VARCHAR(64) | 中文名 |
+| icon / color | VARCHAR | 卡片图标与主题色 |
+| min_grade / max_grade | INT | 适用学段（小学 1-6，初中 7-9） |
+| sort | INT | 前端展示顺序 |
+| enabled | TINYINT | 下架开关 |
+
+### questions 统一题库
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| id | BIGINT PK | |
+| subject | VARCHAR(32) | 学科 code（索引 subject+enabled+grade） |
+| grade | INT | 目标年级 |
+| topic | VARCHAR(100) | 知识点（如"分数运算""勾股定理"） |
+| qtype | VARCHAR(16) | choice（选择）/ text（预留） |
+| passage | TEXT NULL | 阅读短文（可选） |
+| question | TEXT | 题干 |
+| options | TEXT | 选项 JSON 数组字符串 |
+| answer | VARCHAR(255) | 正确答案（服务端判分，不下发前端） |
+| explanation | TEXT NULL | 解析 |
+| difficulty | INT | 难度 1-5 |
+| source | VARCHAR(64) | 来源标记（builtin / 采集来源名） |
+| content_hash | CHAR(32) UNIQUE | subject+question+answer 的 MD5，导入去重 |
+| enabled | TINYINT | 下架开关 |
+
+**导入通道**（二选一，均可重复执行自动去重）：
+
+1. `POST /api/parent/content/import`（家长 JWT，单次 ≤2000 题）
+2. 服务启动时 `questions` 为空 → 自动导入内置 446 道全科题（`internal/seedcontent`，数学题程序化生成保证答案正确）
 
 ## 种子数据（空库自动写入，幂等）
 

@@ -104,6 +104,66 @@ Casdoor 回调：授权码换用户信息 → upsert `parents` 表 → 302 回�
 
 请求：`{"answer":"12","session_id":0}`；答对 +3，返回对错与正确答案/解析。
 
+## 动态内容库（全科题库，内容入库不改源码）
+
+学习内容统一存于 `questions` 表。前端学习地图从 `/subjects` 动态渲染；出题走内容库；判分走统一接口，复用连击/XP/错题本链路。
+
+### GET /subjects
+
+学科目录 + 每科题量：
+
+```json
+[{"code":"math","name":"数学","icon":"∑","color":"#27ae60","min_grade":1,"max_grade":9,"count":298},
+ {"code":"physics","name":"物理","icon":"⚛","count":10}]
+```
+
+内置学科：english / chinese / math（1-9 年级）、physics（8-9）、chemistry（9）、biology / history / geography（7-9）。
+
+### GET /content/pick?subject=math&grade=5&limit=5
+
+随机抽题（`answer` 不下发前端）。`grade` 为学生年级，实际取 `grade±1` 范围保证题量；`limit` 1~20。
+
+```json
+[{"id":115,"subject":"math","grade":5,"topic":"小数运算","qtype":"choice",
+  "question":"计算：1.29 + 3.24 = ?","options":["4.53","5.53","5.03","4.93"],"difficulty":1}]
+```
+
+### GET /content/item?id=
+
+按 id 回取单题（不含答案），错题本巩固复习用。
+
+### POST /content/answer?student_id=
+
+统一判分。请求：`{"id":115,"answer":"4.53","session_id":9}`
+
+- `session_id>0`：走场次计分（连击阶梯、XP 1:1、错题登记/消除），响应含 `combo/xp/review`。
+- `session_id=0`：独立判分，答对 +3 分，响应 `{"correct":true,"answer":"4.53","explanation":"..."}`。
+
+### POST /parent/content/import 🔒
+
+**通用题目导入**——以后采集新学习资料只调此接口，不改源码。单次 ≤2000 题，按 `content_hash`（subject+question+answer 的 MD5）去重：
+
+```json
+{"questions":[{
+  "subject":"math","grade":7,"topic":"有理数","qtype":"choice",
+  "passage":"",                    // 可选：阅读短文
+  "question":"计算：(-3) + (-5) = ?",
+  "options":["-8","8","-2","2"],
+  "answer":"-8",
+  "explanation":"同号相加",         // 可选
+  "difficulty":1,                  // 可选，默认 1
+  "source":"自定义来源"             // 可选
+}]}
+```
+
+响应：`{"imported":1,"skipped":1,"total":2}`（skipped 为重复跳过）。
+
+### GET /parent/content/stats 🔒
+
+内容库统计：`{"total":447,"subjects":[{"code":"math",...,"count":299},...]}`
+
+内置题库：服务启动时若 `questions` 表为空，自动导入 446 道内置全科题（数学程序化生成保证答案正确、英语分级词表、语文古诗词/成语/文学常识、理科基础概念）。之后以数据库为准，重复启动不覆盖。
+
 ## 练习场次（闯关）
 
 ### POST /sessions?student_id=

@@ -16,6 +16,7 @@ import (
 	"studyplanet/internal/db"
 	"studyplanet/internal/leaderboard"
 	"studyplanet/internal/seed"
+	"studyplanet/internal/seedcontent"
 	studyplanetservice "studyplanet/internal/service/studyplanet"
 )
 
@@ -56,6 +57,11 @@ var Main = gcmd.Command{
 			if err = seed.Run(sqlDB, cfg.Parent.Pin); err != nil {
 				log.Printf("种子数据警告: %v", err)
 			}
+		}
+
+		// 动态内容库：同步学科目录，空题库时导入内置全科题（之后以数据库为准）
+		if err := seedcontent.Run(sqlDB); err != nil {
+			log.Printf("内容库初始化警告: %v", err)
 		}
 
 		// 每周经验排行榜：Redis 实时 + 每小时持久化到数据库

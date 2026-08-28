@@ -133,7 +133,7 @@ func (s *Store) CasdoorCallback(r *ghttp.Request) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	if _, err := s.DB.Exec(
 		`INSERT INTO parents(casdoor_sub,display_name,avatar,last_login_at) VALUES(?,?,?,?)
-		 ON CONFLICT(casdoor_sub) DO UPDATE SET display_name=excluded.display_name, avatar=excluded.avatar, last_login_at=excluded.last_login_at`,
+		 ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), avatar=VALUES(avatar), last_login_at=VALUES(last_login_at)`,
 		cu.Sub, displayNameOf(&cu), cu.Avatar, now,
 	); err != nil {
 		s.fail(r, 500, err.Error())

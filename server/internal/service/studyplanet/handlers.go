@@ -2,10 +2,12 @@ package studyplanet
 
 import (
 	"bytes"
+	"database/sql"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -146,7 +148,7 @@ func (s *Store) WordProgress(r *ghttp.Request) {
 	now := time.Now().Format("2006-01-02 15:04:05")
 	_, err := s.DB.Exec(
 		`INSERT INTO word_progress(word_id,child_id,known,last_reviewed) VALUES(?,?,?,?)
-		 ON CONFLICT(word_id,child_id) DO UPDATE SET known=excluded.known, last_reviewed=excluded.last_reviewed`,
+		 ON DUPLICATE KEY UPDATE known=VALUES(known), last_reviewed=VALUES(last_reviewed)`,
 		id, cid, known, now,
 	)
 	if err != nil {
@@ -321,7 +323,7 @@ func (s *Store) PointsSummary(r *ghttp.Request) {
 	}
 	today := time.Now().Format("2006-01-02")
 	var todayEarned int
-	if err := s.DB.Get(&todayEarned, "SELECT COALESCE(SUM(delta),0) FROM points_log WHERE child_id=? AND date(created_at)=?", cid, today); err != nil {
+	if err := s.DB.Get(&todayEarned, "SELECT COALESCE(SUM(delta),0) FROM points_log WHERE child_id=? AND DATE(created_at)=?", cid, today); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -400,7 +402,7 @@ func (s *Store) ParentLogin(r *ghttp.Request) {
 		return
 	}
 	var hash string
-	if err := s.DB.Get(&hash, "SELECT value FROM settings WHERE key='parent_pin'"); err != nil {
+	if err := s.DB.Get(&hash, "SELECT value FROM settings WHERE `key`='parent_pin'"); err != nil {
 		s.fail(r, 500, "PIN 未设置")
 		return
 	}
@@ -515,7 +517,7 @@ func (s *Store) SetPin(r *ghttp.Request) {
 		s.fail(r, 500, err.Error())
 		return
 	}
-	if _, err := s.DB.Exec("INSERT INTO settings(key,value) VALUES('parent_pin',?) ON CONFLICT(key) DO UPDATE SET value=?", string(hash)); err != nil {
+	if _, err := s.DB.Exec("INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash)); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -526,7 +528,7 @@ func (s *Store) SetPin(r *ghttp.Request) {
 // ListStudents 全部学生（家长切换用）。
 func (s *Store) ListStudents(r *ghttp.Request) {
 	var st []model.Student
-	if err := s.DB.Select(&st, "SELECT id,name,username,avatar,grade,created_at FROM children ORDER BY id"); err != nil {
+	if err := s.DB.Select(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children ORDER BY id"); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -566,13 +568,19 @@ func (s *Store) CreateStudent(r *ghttp.Request) {
 			return
 		}
 	}
-	if _, err := s.DB.Exec("INSERT INTO children(name,username,avatar,grade) VALUES(?,?,?,?)",
-		body.Name, body.Username, body.Avatar, body.Grade); err != nil {
+	res, err := s.DB.Exec("INSERT INTO children(name,username,avatar,grade) VALUES(?,?,?,?)",
+		body.Name, sql.NullString{String: body.Username, Valid: body.Username != ""}, body.Avatar, body.Grade)
+	if err != nil {
+		s.fail(r, 500, err.Error())
+		return
+	}
+	newID, err := res.LastInsertId()
+	if err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
 	var st model.Student
-	if err := s.DB.Get(&st, "SELECT id,name,username,avatar,grade,created_at FROM children WHERE id=last_insert_rowid()"); err != nil {
+	if err := s.DB.Get(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children WHERE id=?", newID); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -614,7 +622,7 @@ func (s *Store) UpdateStudent(r *ghttp.Request) {
 		}
 	}
 	if body.Username != nil {
-		if _, err := s.DB.Exec("UPDATE children SET username=? WHERE id=?", *body.Username, id); err != nil {
+		if _, err := s.DB.Exec("UPDATE children SET username=? WHERE id=?", sql.NullString{String: *body.Username, Valid: *body.Username != ""}, id); err != nil {
 			s.fail(r, 500, err.Error())
 			return
 		}
@@ -632,7 +640,7 @@ func (s *Store) UpdateStudent(r *ghttp.Request) {
 		}
 	}
 	var st model.Student
-	if err := s.DB.Get(&st, "SELECT id,name,username,avatar,grade,created_at FROM children WHERE id=?", id); err != nil {
+	if err := s.DB.Get(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children WHERE id=?", id); err != nil {
 		s.fail(r, 404, "学生不存在")
 		return
 	}

@@ -87,7 +87,7 @@ type Setting struct {
 	Value string `db:"value" json:"value"`
 }
 
-// Student 学生档案（children 表；username 可为空，非空则唯一）。
+// Student 学生档案（children 表；username 可为 NULL，非空则唯一；查询用 COALESCE 输出字符串）。
 type Student struct {
 	ID        int    `db:"id" json:"id"`
 	Name      string `db:"name" json:"name"`

@@ -138,7 +138,7 @@ func Run(db *sqlx.DB, pin string) error {
 		return err
 	}
 	if _, err := db.Exec(
-		"INSERT INTO settings(key,value) VALUES('parent_pin',?) ON CONFLICT(key) DO UPDATE SET value=?",
+		"INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?",
 		string(hash), string(hash),
 	); err != nil {
 		return err

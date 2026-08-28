@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gcmd"
@@ -32,16 +33,18 @@ var Main = gcmd.Command{
 	Brief: "启动 StudyPlanet HTTP API 服务",
 	Func: func(ctx context.Context, parser *gcmd.Parser) error {
 		cfg := config.Load()
-		if dir := filepath.Dir(cfg.Database.DSN); dir != "" && dir != "." && dir != "/" {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return err
+		if strings.EqualFold(cfg.Database.Driver, "sqlite") || strings.EqualFold(cfg.Database.Driver, "sqlite3") {
+			if dir := filepath.Dir(cfg.Database.DSN); dir != "" && dir != "." && dir != "/" {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					return err
+				}
 			}
 		}
-		if err := db.Migrate(cfg.Database.DSN); err != nil {
+		if err := db.Migrate(cfg.Database.Driver, cfg.Database.DSN); err != nil {
 			return err
 		}
 
-		sqlDB, err := db.Open(cfg.Database.DSN)
+		sqlDB, err := db.Open(cfg.Database.Driver, cfg.Database.DSN)
 		if err != nil {
 			return err
 		}

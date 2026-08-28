@@ -14,6 +14,7 @@ import (
 	"studyplanet/internal/config"
 	studyplanetcontroller "studyplanet/internal/controller/studyplanet"
 	"studyplanet/internal/db"
+	"studyplanet/internal/gdbinit"
 	"studyplanet/internal/leaderboard"
 	"studyplanet/internal/seed"
 	"studyplanet/internal/seedcontent"
@@ -52,6 +53,11 @@ var Main = gcmd.Command{
 			return err
 		}
 		defer sqlDB.Close()
+
+		// GoFrame ORM 数据源：让 dao 层（g.DB()）与业务层 sqlx 指向同一数据库
+		if err := gdbinit.Setup(cfg.Database.Driver, cfg.Database.DSN); err != nil {
+			return err
+		}
 
 		if cfg.Seed.Enabled {
 			if err = seed.Run(sqlDB, cfg.Parent.Pin); err != nil {

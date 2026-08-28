@@ -10,7 +10,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/go-sql-driver/mysql"
-	_ "modernc.org/sqlite" // 纯 Go SQLite 驱动（CGO-free）
+	// SQLite 驱动由 GF contrib（github.com/glebarez/go-sqlite）提供，
+	// 两者都注册 "sqlite" 驱动名会 panic（Register called twice），这里只引入一处。
+	_ "github.com/glebarez/go-sqlite"
 )
 
 //go:embed migrations/*/*.sql

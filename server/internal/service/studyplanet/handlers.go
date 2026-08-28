@@ -3,7 +3,6 @@ package studyplanet
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"net/http"
 	"os"
 	"strconv"
@@ -459,7 +458,17 @@ func (s *Store) AddTask(r *ghttp.Request) {
 		s.fail(r, 400, "请填写任务名称")
 		return
 	}
-	if _, err := s.DB.Exec("INSERT INTO tasks(title,type,due_date,points,status,child_id) VALUES(?,?,?,?,'pending',?)", body.Title, body.Type, body.DueDate, body.Points, body.StudentID); err != nil {
+	// due_date 为空时写 NULL（MySQL DATE 列不接受空字符串）
+	var dueDate interface{}
+	if strings.TrimSpace(body.DueDate) == "" {
+		dueDate = nil
+	} else {
+		dueDate = body.DueDate
+	}
+	if _, err := daoTasks.Ctx(ctxOf()).Data(g.Map{
+		"title": body.Title, "type": body.Type, "due_date": dueDate,
+		"points": body.Points, "status": "pending", "child_id": body.StudentID,
+	}).Insert(); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -468,7 +477,7 @@ func (s *Store) AddTask(r *ghttp.Request) {
 
 func (s *Store) DeleteTask(r *ghttp.Request) {
 	id := s.idParam(r)
-	if _, err := s.DB.Exec("DELETE FROM tasks WHERE id=?", id); err != nil {
+	if _, err := daoTasks.Ctx(ctxOf()).Where("id", id).Delete(); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -488,7 +497,9 @@ func (s *Store) AddReward(r *ghttp.Request) {
 		s.fail(r, 400, "请填写奖励名称")
 		return
 	}
-	if _, err := s.DB.Exec("INSERT INTO rewards(name,cost_points,status) VALUES(?,?,'active')", body.Name, body.CostPoints); err != nil {
+	if _, err := daoRewards.Ctx(ctxOf()).Data(g.Map{
+		"name": body.Name, "cost_points": body.CostPoints, "status": "active",
+	}).Insert(); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -541,7 +552,9 @@ func (s *Store) SetPin(r *ghttp.Request) {
 		s.fail(r, 500, err.Error())
 		return
 	}
-	if _, err := s.DB.Exec("INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash)); err != nil {
+	if _, err := g.DB().Model("settings").Ctx(ctxOf()).
+		Data(g.Map{"key": "parent_pin", "value": string(hash)}).
+		OnConflict("key").Save(); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -551,8 +564,10 @@ func (s *Store) SetPin(r *ghttp.Request) {
 // ---------- 学生账号管理（家长鉴权后） ----------
 // ListStudents 全部学生（家长切换用）。
 func (s *Store) ListStudents(r *ghttp.Request) {
+	ctx := ctxOf()
 	var st []model.Student
-	if err := s.DB.Select(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children ORDER BY id"); err != nil {
+	err := daoChildren.Ctx(ctx).Order("id").Scan(&st)
+	if err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -581,9 +596,10 @@ func (s *Store) CreateStudent(r *ghttp.Request) {
 	if body.Grade <= 0 {
 		body.Grade = 5
 	}
+	ctx := ctxOf()
 	if body.Username != "" {
-		var cnt int
-		if err := s.DB.Get(&cnt, "SELECT COUNT(*) FROM children WHERE username=?", body.Username); err != nil {
+		cnt, err := daoChildren.Ctx(ctx).Where("username", body.Username).Count()
+		if err != nil {
 			s.fail(r, 500, err.Error())
 			return
 		}
@@ -592,8 +608,9 @@ func (s *Store) CreateStudent(r *ghttp.Request) {
 			return
 		}
 	}
-	res, err := s.DB.Exec("INSERT INTO children(name,username,avatar,grade) VALUES(?,?,?,?)",
-		body.Name, sql.NullString{String: body.Username, Valid: body.Username != ""}, body.Avatar, body.Grade)
+	res, err := daoChildren.Ctx(ctx).Data(g.Map{
+		"name": body.Name, "username": body.Username, "avatar": body.Avatar, "grade": body.Grade,
+	}).Insert()
 	if err != nil {
 		s.fail(r, 500, err.Error())
 		return
@@ -604,7 +621,12 @@ func (s *Store) CreateStudent(r *ghttp.Request) {
 		return
 	}
 	var st model.Student
-	if err := s.DB.Get(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children WHERE id=?", newID); err != nil {
+	rec, err := daoChildren.Ctx(ctx).Where("id", newID).One()
+	if err != nil || rec.IsEmpty() {
+		s.fail(r, 500, "查询新学生失败")
+		return
+	}
+	if err := rec.Struct(&st); err != nil {
 		s.fail(r, 500, err.Error())
 		return
 	}
@@ -628,9 +650,10 @@ func (s *Store) UpdateStudent(r *ghttp.Request) {
 		s.fail(r, 400, "姓名不能为空")
 		return
 	}
+	ctx := ctxOf()
 	if body.Username != nil && *body.Username != "" {
-		var cnt int
-		if err := s.DB.Get(&cnt, "SELECT COUNT(*) FROM children WHERE username=? AND id<>?", *body.Username, id); err != nil {
+		cnt, err := daoChildren.Ctx(ctx).Where("username", *body.Username).Where("id<>?", id).Count()
+		if err != nil {
 			s.fail(r, 500, err.Error())
 			return
 		}
@@ -639,33 +662,33 @@ func (s *Store) UpdateStudent(r *ghttp.Request) {
 			return
 		}
 	}
+	update := g.Map{}
 	if body.Name != nil {
-		if _, err := s.DB.Exec("UPDATE children SET name=? WHERE id=?", *body.Name, id); err != nil {
-			s.fail(r, 500, err.Error())
-			return
-		}
+		update["name"] = *body.Name
 	}
 	if body.Username != nil {
-		if _, err := s.DB.Exec("UPDATE children SET username=? WHERE id=?", sql.NullString{String: *body.Username, Valid: *body.Username != ""}, id); err != nil {
-			s.fail(r, 500, err.Error())
-			return
-		}
+		update["username"] = *body.Username
 	}
 	if body.Avatar != nil {
-		if _, err := s.DB.Exec("UPDATE children SET avatar=? WHERE id=?", *body.Avatar, id); err != nil {
-			s.fail(r, 500, err.Error())
-			return
-		}
+		update["avatar"] = *body.Avatar
 	}
 	if body.Grade != nil {
-		if _, err := s.DB.Exec("UPDATE children SET grade=? WHERE id=?", *body.Grade, id); err != nil {
+		update["grade"] = *body.Grade
+	}
+	if len(update) > 0 {
+		if _, err := daoChildren.Ctx(ctx).Where("id", id).Data(update).Update(); err != nil {
 			s.fail(r, 500, err.Error())
 			return
 		}
 	}
 	var st model.Student
-	if err := s.DB.Get(&st, "SELECT id,name,COALESCE(username,'') AS username,avatar,grade,created_at FROM children WHERE id=?", id); err != nil {
+	rec, err := daoChildren.Ctx(ctx).Where("id", id).One()
+	if err != nil || rec.IsEmpty() {
 		s.fail(r, 404, "学生不存在")
+		return
+	}
+	if err := rec.Struct(&st); err != nil {
+		s.fail(r, 500, err.Error())
 		return
 	}
 	s.ok(r, st)

@@ -28,8 +28,8 @@
 |---|---|---|
 | 客户端 | Vue 3 + Vite | 单文件主组件 `App.vue` + 全局 `style.css`，无路由库 |
 | 服务端 | Go + GoFrame v2 | `gf init` 脚手架分层：cmd / controller / service / model |
-| 数据访问 | jmoiron/sqlx | 业务查询用 `?` 占位符，SQLite/MySQL 通用 |
-| 数据库 | MySQL（推荐）/ SQLite | 驱动：`go-sql-driver/mysql`、`modernc.org/sqlite`（CGO-free） |
+| 数据访问 | GoFrame ORM dao + jmoiron/sqlx | 学生/任务/奖励等 CRUD 走 GF `dao` 层（`g.DB()` 数据源，`internal/gdbinit` 注册）；复杂查询、内容库与排行榜模块保留 sqlx 直连 |
+| 数据库 | MySQL（推荐）/ SQLite | 驱动：`go-sql-driver/mysql`、`glebarez/go-sqlite`（CGO-free，GF 与 sqlx 共用同一驱动注册） |
 | 迁移 | 自研轻量迁移器 | SQL 内嵌 `embed.FS`，启动时逐语句执行，版本表 `schema_migrations` |
 | 认证 | Casdoor SSO（OIDC）+ PIN 回退 | 服务端签发 JWT（HS256），长期有效直至主动退出 |
 | 部署 | Docker Compose + GitHub Actions | 镜像 `ghcr.io/ayflying/study_planet`，`latest` + 版本双标签 |

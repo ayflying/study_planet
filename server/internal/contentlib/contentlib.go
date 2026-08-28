@@ -192,5 +192,14 @@ func CountBySubject(db *sqlx.DB) (map[string]int, error) {
 	return m, nil
 }
 
+// SubjectExists 判断学科 code 是否已启用（含题目为 0 的科目）。
+func SubjectExists(db *sqlx.DB, code string) (bool, error) {
+	var n int
+	if err := db.Get(&n, "SELECT COUNT(1) FROM subjects WHERE code=? AND enabled=1", code); err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // SortStrings 工具：给选项排序（导出用）。
 func SortStrings(s []string) { sort.Strings(s) }

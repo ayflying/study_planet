@@ -7,6 +7,7 @@ import (
 
 	"github.com/gogf/gf/v2/net/ghttp"
 
+	"studyplanet/internal/contentlib"
 	"studyplanet/internal/model"
 )
 
@@ -31,11 +32,22 @@ func (s *sStudyPlanet) CreateSession(r *ghttp.Request) {
 		s.fail(r, 400, "请求格式错误")
 		return
 	}
-	switch body.Subject {
-	case "words", "reading", "math":
-	default:
-		s.fail(r, 400, "subject 需为 words/reading/math")
+	// 动态内容库后学科是开放集合（english/chinese/math/physics...），不能再限 words/reading/math。
+	// 校验：非空 + 长度合法 + 必须是内容库中已启用学科（或兼容旧值 words/reading）。
+	if body.Subject == "" || len(body.Subject) > 32 {
+		s.fail(r, 400, "subject 不能为空")
 		return
+	}
+	if body.Subject != "words" && body.Subject != "reading" {
+		valid, err := contentlib.SubjectExists(s.DB, body.Subject)
+		if err != nil {
+			s.fail(r, 500, err.Error())
+			return
+		}
+		if !valid {
+			s.fail(r, 400, "subject 需为已启用的学科 code（如 english/chinese/math）")
+			return
+		}
 	}
 	if body.Level <= 0 {
 		body.Level = 1

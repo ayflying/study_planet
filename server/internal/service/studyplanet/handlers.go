@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
@@ -672,10 +671,11 @@ func (s *Store) DeleteStudent(r *ghttp.Request) {
 
 // ---------- JWT ----------
 func issueToken(secret, name string) (string, error) {
+	// 会话没有固定过期时间：前端将 token 持久化到 localStorage，
+	// 只有家长主动退出（或更换 JWT_SECRET）才会结束登录状态。
 	claims := jwt.MapClaims{
 		"sub":  "parent",
 		"name": name,
-		"exp":  time.Now().Add(30 * 24 * time.Hour).Unix(),
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString([]byte(secret))

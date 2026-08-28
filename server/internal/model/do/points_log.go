@@ -12,9 +12,9 @@ import (
 // PointsLog is the golang structure of table points_log for DAO operations like Where/Data.
 type PointsLog struct {
 	g.Meta    `orm:"table:points_log, do:true"`
-	Id        interface{} //
-	ChildId   interface{} //
-	Delta     interface{} //
-	Reason    interface{} //
+	Id        any         //
+	ChildId   any         //
+	Delta     any         //
+	Reason    any         //
 	CreatedAt *gtime.Time //
 }

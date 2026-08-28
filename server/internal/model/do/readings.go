@@ -11,8 +11,8 @@ import (
 // Readings is the golang structure of table readings for DAO operations like Where/Data.
 type Readings struct {
 	g.Meta  `orm:"table:readings, do:true"`
-	Id      interface{} //
-	Title   interface{} //
-	Content interface{} //
-	Level   interface{} //
+	Id      any //
+	Title   any //
+	Content any //
+	Level   any //
 }

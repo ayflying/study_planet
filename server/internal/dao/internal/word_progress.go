@@ -13,9 +13,10 @@ import (
 
 // WordProgressDao is the data access object for the table word_progress.
 type WordProgressDao struct {
-	table   string              // table is the underlying table name of the DAO.
-	group   string              // group is the database configuration group name of the current DAO.
-	columns WordProgressColumns // columns contains all the column names of Table for convenient usage.
+	table    string              // table is the underlying table name of the DAO.
+	group    string              // group is the database configuration group name of the current DAO.
+	columns  WordProgressColumns // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler  // handlers for customized model modification.
 }
 
 // WordProgressColumns defines and stores column names for the table word_progress.
@@ -35,11 +36,12 @@ var wordProgressColumns = WordProgressColumns{
 }
 
 // NewWordProgressDao creates and returns a new DAO object for table data access.
-func NewWordProgressDao() *WordProgressDao {
+func NewWordProgressDao(handlers ...gdb.ModelHandler) *WordProgressDao {
 	return &WordProgressDao{
-		group:   "default",
-		table:   "word_progress",
-		columns: wordProgressColumns,
+		group:    "default",
+		table:    "word_progress",
+		columns:  wordProgressColumns,
+		handlers: handlers,
 	}
 }
 
@@ -65,7 +67,11 @@ func (dao *WordProgressDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *WordProgressDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

@@ -12,13 +12,13 @@ import (
 // Tasks is the golang structure of table tasks for DAO operations like Where/Data.
 type Tasks struct {
 	g.Meta      `orm:"table:tasks, do:true"`
-	Id          interface{} //
-	Title       interface{} //
-	Type        interface{} //
+	Id          any         //
+	Title       any         //
+	Type        any         //
 	DueDate     *gtime.Time //
-	Points      interface{} //
-	Status      interface{} //
-	ChildId     interface{} //
+	Points      any         //
+	Status      any         //
+	ChildId     any         //
 	CreatedAt   *gtime.Time //
 	CompletedAt *gtime.Time //
 }

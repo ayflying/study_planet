@@ -13,9 +13,10 @@ import (
 
 // ReadingQuestionsDao is the data access object for the table reading_questions.
 type ReadingQuestionsDao struct {
-	table   string                  // table is the underlying table name of the DAO.
-	group   string                  // group is the database configuration group name of the current DAO.
-	columns ReadingQuestionsColumns // columns contains all the column names of Table for convenient usage.
+	table    string                  // table is the underlying table name of the DAO.
+	group    string                  // group is the database configuration group name of the current DAO.
+	columns  ReadingQuestionsColumns // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler      // handlers for customized model modification.
 }
 
 // ReadingQuestionsColumns defines and stores column names for the table reading_questions.
@@ -43,11 +44,12 @@ var readingQuestionsColumns = ReadingQuestionsColumns{
 }
 
 // NewReadingQuestionsDao creates and returns a new DAO object for table data access.
-func NewReadingQuestionsDao() *ReadingQuestionsDao {
+func NewReadingQuestionsDao(handlers ...gdb.ModelHandler) *ReadingQuestionsDao {
 	return &ReadingQuestionsDao{
-		group:   "default",
-		table:   "reading_questions",
-		columns: readingQuestionsColumns,
+		group:    "default",
+		table:    "reading_questions",
+		columns:  readingQuestionsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -73,7 +75,11 @@ func (dao *ReadingQuestionsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *ReadingQuestionsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

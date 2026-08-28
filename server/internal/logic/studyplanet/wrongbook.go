@@ -27,16 +27,7 @@ func (s *sStudyPlanet) recordWrong(childID int, subject string, refID int) {
 		childID, subject, refID, now,
 	)
 	if err != nil {
-		// SQLite 方言回退
-		_, err = s.DB.Exec(
-			`INSERT INTO wrong_questions(child_id,subject,ref_id,wrong_count,resolved,last_wrong_at) VALUES(?,?,?,1,0,?)
-			 ON CONFLICT(child_id,subject,ref_id) DO UPDATE SET wrong_count=wrong_count+1, resolved=0, last_wrong_at=excluded.last_wrong_at`,
-			childID, subject, refID, now,
-		)
-		if err != nil {
-			gLog("错题登记失败 child=%d %s#%d: %v", childID, subject, refID, err)
-			return
-		}
+		gLog("错题登记失败 child=%d %s#%d: %v", childID, subject, refID, err)
 	}
 }
 

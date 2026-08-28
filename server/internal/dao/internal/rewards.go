@@ -13,9 +13,10 @@ import (
 
 // RewardsDao is the data access object for the table rewards.
 type RewardsDao struct {
-	table   string         // table is the underlying table name of the DAO.
-	group   string         // group is the database configuration group name of the current DAO.
-	columns RewardsColumns // columns contains all the column names of Table for convenient usage.
+	table    string             // table is the underlying table name of the DAO.
+	group    string             // group is the database configuration group name of the current DAO.
+	columns  RewardsColumns     // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler // handlers for customized model modification.
 }
 
 // RewardsColumns defines and stores column names for the table rewards.
@@ -35,11 +36,12 @@ var rewardsColumns = RewardsColumns{
 }
 
 // NewRewardsDao creates and returns a new DAO object for table data access.
-func NewRewardsDao() *RewardsDao {
+func NewRewardsDao(handlers ...gdb.ModelHandler) *RewardsDao {
 	return &RewardsDao{
-		group:   "default",
-		table:   "rewards",
-		columns: rewardsColumns,
+		group:    "default",
+		table:    "rewards",
+		columns:  rewardsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -65,7 +67,11 @@ func (dao *RewardsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *RewardsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

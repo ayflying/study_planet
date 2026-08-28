@@ -10,8 +10,8 @@ import (
 
 // WordProgress is the golang structure for table word_progress.
 type WordProgress struct {
-	WordId       int64       `json:"wordId"       orm:"word_id"       ` //
-	ChildId      int64       `json:"childId"      orm:"child_id"      ` //
-	Known        int         `json:"known"        orm:"known"         ` //
-	LastReviewed *gtime.Time `json:"lastReviewed" orm:"last_reviewed" ` //
+	WordId       int64       `json:"wordId"       orm:"word_id"       description:""` //
+	ChildId      int64       `json:"childId"      orm:"child_id"      description:""` //
+	Known        int         `json:"known"        orm:"known"         description:""` //
+	LastReviewed *gtime.Time `json:"lastReviewed" orm:"last_reviewed" description:""` //
 }

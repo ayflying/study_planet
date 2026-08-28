@@ -13,9 +13,10 @@ import (
 
 // RedemptionsDao is the data access object for the table redemptions.
 type RedemptionsDao struct {
-	table   string             // table is the underlying table name of the DAO.
-	group   string             // group is the database configuration group name of the current DAO.
-	columns RedemptionsColumns // columns contains all the column names of Table for convenient usage.
+	table    string             // table is the underlying table name of the DAO.
+	group    string             // group is the database configuration group name of the current DAO.
+	columns  RedemptionsColumns // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler // handlers for customized model modification.
 }
 
 // RedemptionsColumns defines and stores column names for the table redemptions.
@@ -39,11 +40,12 @@ var redemptionsColumns = RedemptionsColumns{
 }
 
 // NewRedemptionsDao creates and returns a new DAO object for table data access.
-func NewRedemptionsDao() *RedemptionsDao {
+func NewRedemptionsDao(handlers ...gdb.ModelHandler) *RedemptionsDao {
 	return &RedemptionsDao{
-		group:   "default",
-		table:   "redemptions",
-		columns: redemptionsColumns,
+		group:    "default",
+		table:    "redemptions",
+		columns:  redemptionsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -69,7 +71,11 @@ func (dao *RedemptionsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *RedemptionsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

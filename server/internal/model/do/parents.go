@@ -12,10 +12,10 @@ import (
 // Parents is the golang structure of table parents for DAO operations like Where/Data.
 type Parents struct {
 	g.Meta      `orm:"table:parents, do:true"`
-	Id          interface{} //
-	CasdoorSub  interface{} //
-	DisplayName interface{} //
-	Avatar      interface{} //
+	Id          any         //
+	CasdoorSub  any         //
+	DisplayName any         //
+	Avatar      any         //
 	CreatedAt   *gtime.Time //
 	LastLoginAt *gtime.Time //
 }

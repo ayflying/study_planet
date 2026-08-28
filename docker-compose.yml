@@ -9,14 +9,9 @@ services:
       - TZ=Asia/Shanghai
     ports:
       - "18180:8080"
-    volumes:
-      - db:/app/data
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-volumes:
-  db:

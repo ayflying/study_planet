@@ -11,6 +11,6 @@ import (
 // Settings is the golang structure of table settings for DAO operations like Where/Data.
 type Settings struct {
 	g.Meta `orm:"table:settings, do:true"`
-	Key    interface{} //
-	Value  interface{} //
+	Key    any //
+	Value  any //
 }

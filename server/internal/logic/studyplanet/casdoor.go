@@ -129,13 +129,12 @@ func (s *sStudyPlanet) CasdoorCallback(r *ghttp.Request) {
 		return
 	}
 
-	// 3. upsert 家长账号（MySQL/SQLite 方言自适应，SQLite 下 MySQL 语法会报 "near DUPLICATE"）
+	// 3. upsert 家长账号（按 casdoor_sub 幂等，存在则覆盖展示信息与登录时间）
 	now := time.Now().Format("2006-01-02 15:04:05")
-	if err := upsertExec(s.DB, "parents",
-		[]string{"casdoor_sub", "display_name", "avatar", "last_login_at"},
-		[]interface{}{cu.Sub, displayNameOf(&cu), cu.Avatar, now},
-		[]string{"casdoor_sub"},
-		[]string{"display_name", "avatar", "last_login_at"},
+	if _, err := s.DB.Exec(
+		`INSERT INTO parents(casdoor_sub, display_name, avatar, last_login_at) VALUES(?,?,?,?)
+		 ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), avatar=VALUES(avatar), last_login_at=VALUES(last_login_at)`,
+		cu.Sub, displayNameOf(&cu), cu.Avatar, now,
 	); err != nil {
 		s.fail(r, 500, err.Error())
 		return

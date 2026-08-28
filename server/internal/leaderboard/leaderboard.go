@@ -88,27 +88,15 @@ func (b *Board) AddXP(ctx context.Context, childID int, delta int) {
 	_ = b.rdb.Expire(ctx, key, 8*24*time.Hour).Err() // 当周结束 7 天后自动清理
 }
 
-// upsertXP 持久化表写入：full=true 时直接覆盖（快照），否则累加。兼容 MySQL/SQLite。
+// upsertXP 持久化表写入：full=true 时直接覆盖（快照），否则累加。
 func (b *Board) upsertXP(ctx context.Context, week string, childID int, delta int, full bool) error {
+	expr := "xp = xp + VALUES(xp)"
+	if full {
+		expr = "xp = VALUES(xp)"
+	}
 	_, err := b.db.ExecContext(ctx,
 		"INSERT INTO leaderboard_weekly(week_key, child_id, xp) VALUES(?,?,?) "+
-			"ON DUPLICATE KEY UPDATE xp = VALUES(xp)",
-		week, childID, delta,
-	)
-	if err == nil {
-		return nil
-	}
-	if full {
-		_, err = b.db.ExecContext(ctx,
-			"INSERT INTO leaderboard_weekly(week_key, child_id, xp) VALUES(?,?,?) "+
-				"ON CONFLICT(week_key, child_id) DO UPDATE SET xp = excluded.xp",
-			week, childID, delta,
-		)
-		return err
-	}
-	_, err = b.db.ExecContext(ctx,
-		"INSERT INTO leaderboard_weekly(week_key, child_id, xp) VALUES(?,?,?) "+
-			"ON CONFLICT(week_key, child_id) DO UPDATE SET xp = xp + excluded.xp",
+			"ON DUPLICATE KEY UPDATE "+expr,
 		week, childID, delta,
 	)
 	return err

@@ -12,10 +12,11 @@ import (
 // Children is the golang structure of table children for DAO operations like Where/Data.
 type Children struct {
 	g.Meta    `orm:"table:children, do:true"`
-	Id        interface{} //
-	Name      interface{} //
-	Username  interface{} //
-	Avatar    interface{} //
-	Grade     interface{} //
+	Id        any         //
+	Name      any         //
+	Username  any         //
+	Avatar    any         //
+	Grade     any         //
 	CreatedAt *gtime.Time //
+	Xp        any         //
 }

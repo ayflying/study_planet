@@ -13,9 +13,10 @@ import (
 
 // ReadingsDao is the data access object for the table readings.
 type ReadingsDao struct {
-	table   string          // table is the underlying table name of the DAO.
-	group   string          // group is the database configuration group name of the current DAO.
-	columns ReadingsColumns // columns contains all the column names of Table for convenient usage.
+	table    string             // table is the underlying table name of the DAO.
+	group    string             // group is the database configuration group name of the current DAO.
+	columns  ReadingsColumns    // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler // handlers for customized model modification.
 }
 
 // ReadingsColumns defines and stores column names for the table readings.
@@ -35,11 +36,12 @@ var readingsColumns = ReadingsColumns{
 }
 
 // NewReadingsDao creates and returns a new DAO object for table data access.
-func NewReadingsDao() *ReadingsDao {
+func NewReadingsDao(handlers ...gdb.ModelHandler) *ReadingsDao {
 	return &ReadingsDao{
-		group:   "default",
-		table:   "readings",
-		columns: readingsColumns,
+		group:    "default",
+		table:    "readings",
+		columns:  readingsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -65,7 +67,11 @@ func (dao *ReadingsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *ReadingsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

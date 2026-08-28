@@ -67,14 +67,7 @@ func UpsertSubjects(db *sqlx.DB) error {
 			 ON DUPLICATE KEY UPDATE name=VALUES(name), icon=VALUES(icon), color=VALUES(color), min_grade=VALUES(min_grade), max_grade=VALUES(max_grade), sort=VALUES(sort)`,
 			s.Code, s.Name, s.Icon, s.Color, s.MinGrade, s.MaxGrade, s.Sort, s.Enabled,
 		); err != nil {
-			// SQLite 方言回退
-			if _, err2 := db.Exec(
-				`INSERT INTO subjects(code,name,icon,color,min_grade,max_grade,sort,enabled) VALUES(?,?,?,?,?,?,?,?)
-				 ON CONFLICT(code) DO UPDATE SET name=excluded.name, icon=excluded.icon, color=excluded.color, min_grade=excluded.min_grade, max_grade=excluded.max_grade, sort=excluded.sort`,
-				s.Code, s.Name, s.Icon, s.Color, s.MinGrade, s.MaxGrade, s.Sort, s.Enabled,
-			); err2 != nil {
-				return fmt.Errorf("写入学科 %s 失败: %w", s.Code, err2)
-			}
+			return fmt.Errorf("写入学科 %s 失败: %w", s.Code, err)
 		}
 	}
 	return nil
@@ -95,15 +88,7 @@ func ImportQuestions(db *sqlx.DB, qs []Question) (imported int, skipped int, err
 			q.Subject, q.Grade, q.Topic, q.QType, nullIfEmpty(q.Passage), q.Question, q.OptionsJSON, q.Answer, nullIfEmpty(q.Explanation), q.Difficulty, q.Source, hash,
 		)
 		if err != nil {
-			// SQLite 方言回退（INSERT OR IGNORE）
-			res, err = db.Exec(
-				`INSERT OR IGNORE INTO questions(subject,grade,topic,qtype,passage,question,options,answer,explanation,difficulty,source,content_hash,enabled)
-				 VALUES(?,?,?,?,?,?,?,?,?,?,?,? ,1)`,
-				q.Subject, q.Grade, q.Topic, q.QType, nullIfEmpty(q.Passage), q.Question, q.OptionsJSON, q.Answer, nullIfEmpty(q.Explanation), q.Difficulty, q.Source, hash,
-			)
-			if err != nil {
-				return imported, skipped, fmt.Errorf("导入第 %d 题失败: %w", i+1, err)
-			}
+			return imported, skipped, fmt.Errorf("导入第 %d 题失败: %w", i+1, err)
 		}
 		n, _ := res.RowsAffected()
 		if n > 0 {

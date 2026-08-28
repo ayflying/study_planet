@@ -13,9 +13,10 @@ import (
 
 // ChildrenDao is the data access object for the table children.
 type ChildrenDao struct {
-	table   string          // table is the underlying table name of the DAO.
-	group   string          // group is the database configuration group name of the current DAO.
-	columns ChildrenColumns // columns contains all the column names of Table for convenient usage.
+	table    string             // table is the underlying table name of the DAO.
+	group    string             // group is the database configuration group name of the current DAO.
+	columns  ChildrenColumns    // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler // handlers for customized model modification.
 }
 
 // ChildrenColumns defines and stores column names for the table children.
@@ -26,6 +27,7 @@ type ChildrenColumns struct {
 	Avatar    string //
 	Grade     string //
 	CreatedAt string //
+	Xp        string //
 }
 
 // childrenColumns holds the columns for the table children.
@@ -36,14 +38,16 @@ var childrenColumns = ChildrenColumns{
 	Avatar:    "avatar",
 	Grade:     "grade",
 	CreatedAt: "created_at",
+	Xp:        "xp",
 }
 
 // NewChildrenDao creates and returns a new DAO object for table data access.
-func NewChildrenDao() *ChildrenDao {
+func NewChildrenDao(handlers ...gdb.ModelHandler) *ChildrenDao {
 	return &ChildrenDao{
-		group:   "default",
-		table:   "children",
-		columns: childrenColumns,
+		group:    "default",
+		table:    "children",
+		columns:  childrenColumns,
+		handlers: handlers,
 	}
 }
 
@@ -69,7 +73,11 @@ func (dao *ChildrenDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *ChildrenDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

@@ -6,6 +6,6 @@ package entity
 
 // Settings is the golang structure for table settings.
 type Settings struct {
-	Key   string `json:"key"   orm:"key"   ` //
-	Value string `json:"value" orm:"value" ` //
+	Key   string `json:"key"   orm:"key"   description:""` //
+	Value string `json:"value" orm:"value" description:""` //
 }

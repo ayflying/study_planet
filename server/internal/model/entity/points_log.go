@@ -10,9 +10,9 @@ import (
 
 // PointsLog is the golang structure for table points_log.
 type PointsLog struct {
-	Id        int64       `json:"id"        orm:"id"         ` //
-	ChildId   int64       `json:"childId"   orm:"child_id"   ` //
-	Delta     int         `json:"delta"     orm:"delta"      ` //
-	Reason    string      `json:"reason"    orm:"reason"     ` //
-	CreatedAt *gtime.Time `json:"createdAt" orm:"created_at" ` //
+	Id        int64       `json:"id"        orm:"id"         description:""` //
+	ChildId   int64       `json:"childId"   orm:"child_id"   description:""` //
+	Delta     int         `json:"delta"     orm:"delta"      description:""` //
+	Reason    string      `json:"reason"    orm:"reason"     description:""` //
+	CreatedAt *gtime.Time `json:"createdAt" orm:"created_at" description:""` //
 }

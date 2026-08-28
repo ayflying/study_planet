@@ -13,9 +13,10 @@ import (
 
 // MathProblemsDao is the data access object for the table math_problems.
 type MathProblemsDao struct {
-	table   string              // table is the underlying table name of the DAO.
-	group   string              // group is the database configuration group name of the current DAO.
-	columns MathProblemsColumns // columns contains all the column names of Table for convenient usage.
+	table    string              // table is the underlying table name of the DAO.
+	group    string              // group is the database configuration group name of the current DAO.
+	columns  MathProblemsColumns // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler  // handlers for customized model modification.
 }
 
 // MathProblemsColumns defines and stores column names for the table math_problems.
@@ -41,11 +42,12 @@ var mathProblemsColumns = MathProblemsColumns{
 }
 
 // NewMathProblemsDao creates and returns a new DAO object for table data access.
-func NewMathProblemsDao() *MathProblemsDao {
+func NewMathProblemsDao(handlers ...gdb.ModelHandler) *MathProblemsDao {
 	return &MathProblemsDao{
-		group:   "default",
-		table:   "math_problems",
-		columns: mathProblemsColumns,
+		group:    "default",
+		table:    "math_problems",
+		columns:  mathProblemsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -71,7 +73,11 @@ func (dao *MathProblemsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *MathProblemsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

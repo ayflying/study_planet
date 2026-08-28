@@ -10,9 +10,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/go-sql-driver/mysql"
-	// SQLite 驱动由 GF contrib（github.com/glebarez/go-sqlite）提供，
-	// 两者都注册 "sqlite" 驱动名会 panic（Register called twice），这里只引入一处。
-	_ "github.com/glebarez/go-sqlite"
 )
 
 //go:embed migrations/*/*.sql
@@ -72,15 +69,9 @@ func splitStatements(sqlText string) []string {
 	return stmts
 }
 
-func ensureMigrationsTable(db *sqlx.DB, driver string) error {
-	switch driver {
-	case "mysql":
-		_, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT NOT NULL PRIMARY KEY, name VARCHAR(255) NOT NULL DEFAULT '', applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
-		return err
-	default:
-		_, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL DEFAULT '', applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
-		return err
-	}
+func ensureMigrationsTable(db *sqlx.DB) error {
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT NOT NULL PRIMARY KEY, name VARCHAR(255) NOT NULL DEFAULT '', applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+	return err
 }
 
 func appliedVersions(db *sqlx.DB) (map[int]bool, error) {
@@ -100,44 +91,12 @@ func appliedVersions(db *sqlx.DB) (map[int]bool, error) {
 	return applied, rows.Err()
 }
 
-// convertLegacyMigrations 兼容旧 golang-migrate 版本表：旧格式只有 version/dirty/ts 列、
-// 只存一行最新版本；新格式按“每个已应用版本一行”记录（version+name）。
-// 检测到旧格式时，重建为带 name 列的新表并补记 1..最新版本。
-func convertLegacyMigrations(db *sqlx.DB) error {
-	var row struct {
-		Version int
-		Dirty   bool
-	}
-	if err := db.Get(&row, "SELECT version, dirty FROM schema_migrations LIMIT 1"); err != nil {
-		return nil // 没有 dirty 列，已是新格式
-	}
-	if row.Dirty {
-		return fmt.Errorf("数据库存在未完成的迁移（dirty 版本 %d），请先人工修复 schema_migrations 表", row.Version)
-	}
-	if _, err := db.Exec("ALTER TABLE schema_migrations RENAME TO schema_migrations_legacy"); err != nil {
-		return fmt.Errorf("备份旧迁移版本表失败: %w", err)
-	}
-	if err := ensureMigrationsTable(db, "sqlite"); err != nil {
-		return fmt.Errorf("重建迁移版本表失败: %w", err)
-	}
-	for v := 1; v <= row.Version; v++ {
-		if _, err := db.Exec("INSERT INTO schema_migrations(version,name) VALUES(?,?)", v, fmt.Sprintf("legacy-%06d", v)); err != nil {
-			return fmt.Errorf("转换旧迁移版本记录失败（版本 %d）: %w", v, err)
-		}
-	}
-	if _, err := db.Exec("DROP TABLE schema_migrations_legacy"); err != nil {
-		return fmt.Errorf("清理旧迁移版本表失败: %w", err)
-	}
-	return nil
-}
-
 // Migrate 启动时自动升级数据库结构：空库全量建表，已有库按版本表增量执行；无变更时跳过。
 func Migrate(driver, dsn string) error {
-	driver = strings.ToLower(driver)
-	if driver == "sqlite3" {
-		driver = "sqlite"
+	if !strings.EqualFold(driver, "mysql") {
+		return fmt.Errorf("db: 仅支持 MySQL（配置的驱动为 %s）", driver)
 	}
-	conn, err := sqlx.Open(driver, dsn)
+	conn, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
@@ -145,20 +104,14 @@ func Migrate(driver, dsn string) error {
 	if err := conn.Ping(); err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
-	if err := ensureMigrationsTable(conn, driver); err != nil {
+	if err := ensureMigrationsTable(conn); err != nil {
 		return fmt.Errorf("初始化迁移版本表失败: %w", err)
-	}
-	// 兼容旧 golang-migrate 单行版本表（SQLite 老库遗留）
-	if driver != "mysql" {
-		if err := convertLegacyMigrations(conn); err != nil {
-			return err
-		}
 	}
 	applied, err := appliedVersions(conn)
 	if err != nil {
 		return fmt.Errorf("读取迁移版本失败: %w", err)
 	}
-	migrations, err := loadMigrations(driver)
+	migrations, err := loadMigrations("mysql")
 	if err != nil {
 		return fmt.Errorf("加载迁移脚本失败: %w", err)
 	}
@@ -190,12 +143,12 @@ func Migrate(driver, dsn string) error {
 
 // Open 打开数据库连接池。
 func Open(driver, dsn string) (*sqlx.DB, error) {
-	db, err := sqlx.Open(strings.ToLower(driver), dsn)
+	if !strings.EqualFold(driver, "mysql") {
+		return nil, fmt.Errorf("db: 仅支持 MySQL（配置的驱动为 %s）", driver)
+	}
+	db, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		return nil, err
-	}
-	if strings.EqualFold(driver, "sqlite") || strings.EqualFold(driver, "sqlite3") {
-		db.SetMaxOpenConns(1)
 	}
 	if err := db.Ping(); err != nil {
 		db.Close()

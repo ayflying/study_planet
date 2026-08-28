@@ -176,11 +176,10 @@ func (s *sStudyPlanet) WordProgress(r *ghttp.Request) {
 		return
 	}
 	now := time.Now().Format("2006-01-02 15:04:05")
-	if err := upsertExec(s.DB, "word_progress",
-		[]string{"word_id", "child_id", "known", "last_reviewed"},
-		[]interface{}{id, cid, known, now},
-		[]string{"word_id", "child_id"},
-		[]string{"known", "last_reviewed"},
+	if _, err := s.DB.Exec(
+		`INSERT INTO word_progress(word_id, child_id, known, last_reviewed) VALUES(?,?,?,?)
+		 ON DUPLICATE KEY UPDATE known=VALUES(known), last_reviewed=VALUES(last_reviewed)`,
+		id, cid, known, now,
 	); err != nil {
 		s.fail(r, 500, err.Error())
 		return

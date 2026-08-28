@@ -11,11 +11,11 @@ import (
 // MathProblems is the golang structure of table math_problems for DAO operations like Where/Data.
 type MathProblems struct {
 	g.Meta      `orm:"table:math_problems, do:true"`
-	Id          interface{} //
-	Level       interface{} //
-	Type        interface{} //
-	Question    interface{} //
-	Options     interface{} //
-	Answer      interface{} //
-	Explanation interface{} //
+	Id          any //
+	Level       any //
+	Type        any //
+	Question    any //
+	Options     any //
+	Answer      any //
+	Explanation any //
 }

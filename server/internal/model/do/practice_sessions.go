@@ -12,16 +12,16 @@ import (
 // PracticeSessions is the golang structure of table practice_sessions for DAO operations like Where/Data.
 type PracticeSessions struct {
 	g.Meta     `orm:"table:practice_sessions, do:true"`
-	Id         interface{} //
-	ChildId    interface{} //
-	Subject    interface{} //
-	Level      interface{} //
-	Total      interface{} //
-	Correct    interface{} //
-	MaxCombo   interface{} //
-	Bonus      interface{} //
-	Stars      interface{} //
-	Finished   interface{} //
+	Id         any         //
+	ChildId    any         //
+	Subject    any         //
+	Level      any         //
+	Total      any         //
+	Correct    any         //
+	MaxCombo   any         //
+	Bonus      any         //
+	Stars      any         //
+	Finished   any         //
 	CreatedAt  *gtime.Time //
 	FinishedAt *gtime.Time //
 }

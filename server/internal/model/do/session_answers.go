@@ -12,11 +12,11 @@ import (
 // SessionAnswers is the golang structure of table session_answers for DAO operations like Where/Data.
 type SessionAnswers struct {
 	g.Meta     `orm:"table:session_answers, do:true"`
-	Id         interface{} //
-	SessionId  interface{} //
-	RefId      interface{} //
-	Correct    interface{} //
-	Points     interface{} //
-	Combo      interface{} //
+	Id         any         //
+	SessionId  any         //
+	RefId      any         //
+	Correct    any         //
+	Points     any         //
+	Combo      any         //
 	AnsweredAt *gtime.Time //
 }

@@ -1,0 +1,5 @@
+gfcli:
+  gen:
+    dao:
+      - link: "mysql:study_planet:cEweJTJrFSirtNXe@tcp(100.66.1.1:3306)/study_planet"
+        descriptionTag: true

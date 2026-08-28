@@ -11,8 +11,8 @@ import (
 // Rewards is the golang structure of table rewards for DAO operations like Where/Data.
 type Rewards struct {
 	g.Meta     `orm:"table:rewards, do:true"`
-	Id         interface{} //
-	Name       interface{} //
-	CostPoints interface{} //
-	Status     interface{} //
+	Id         any //
+	Name       any //
+	CostPoints any //
+	Status     any //
 }

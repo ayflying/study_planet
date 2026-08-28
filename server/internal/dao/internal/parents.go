@@ -13,9 +13,10 @@ import (
 
 // ParentsDao is the data access object for the table parents.
 type ParentsDao struct {
-	table   string         // table is the underlying table name of the DAO.
-	group   string         // group is the database configuration group name of the current DAO.
-	columns ParentsColumns // columns contains all the column names of Table for convenient usage.
+	table    string             // table is the underlying table name of the DAO.
+	group    string             // group is the database configuration group name of the current DAO.
+	columns  ParentsColumns     // columns contains all the column names of Table for convenient usage.
+	handlers []gdb.ModelHandler // handlers for customized model modification.
 }
 
 // ParentsColumns defines and stores column names for the table parents.
@@ -39,11 +40,12 @@ var parentsColumns = ParentsColumns{
 }
 
 // NewParentsDao creates and returns a new DAO object for table data access.
-func NewParentsDao() *ParentsDao {
+func NewParentsDao(handlers ...gdb.ModelHandler) *ParentsDao {
 	return &ParentsDao{
-		group:   "default",
-		table:   "parents",
-		columns: parentsColumns,
+		group:    "default",
+		table:    "parents",
+		columns:  parentsColumns,
+		handlers: handlers,
 	}
 }
 
@@ -69,7 +71,11 @@ func (dao *ParentsDao) Group() string {
 
 // Ctx creates and returns a Model for the current DAO. It automatically sets the context for the current operation.
 func (dao *ParentsDao) Ctx(ctx context.Context) *gdb.Model {
-	return dao.DB().Model(dao.table).Safe().Ctx(ctx)
+	model := dao.DB().Model(dao.table)
+	for _, handler := range dao.handlers {
+		model = handler(model)
+	}
+	return model.Safe().Ctx(ctx)
 }
 
 // Transaction wraps the transaction logic using function f.

@@ -12,8 +12,8 @@ import (
 // WordProgress is the golang structure of table word_progress for DAO operations like Where/Data.
 type WordProgress struct {
 	g.Meta       `orm:"table:word_progress, do:true"`
-	WordId       interface{} //
-	ChildId      interface{} //
-	Known        interface{} //
+	WordId       any         //
+	ChildId      any         //
+	Known        any         //
 	LastReviewed *gtime.Time //
 }

@@ -12,10 +12,10 @@ import (
 // Redemptions is the golang structure of table redemptions for DAO operations like Where/Data.
 type Redemptions struct {
 	g.Meta      `orm:"table:redemptions, do:true"`
-	Id          interface{} //
-	RewardId    interface{} //
-	ChildId     interface{} //
-	Status      interface{} //
+	Id          any         //
+	RewardId    any         //
+	ChildId     any         //
+	Status      any         //
 	RequestedAt *gtime.Time //
 	ConfirmedAt *gtime.Time //
 }

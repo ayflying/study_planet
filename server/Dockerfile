@@ -24,10 +24,7 @@ COPY --from=build /out/server /app/server
 COPY --from=client-build /client/dist /app/client
 COPY server/manifest/config /app/manifest/config
 COPY VERSION /app/VERSION
-RUN mkdir -p /app/data
-# 默认 SQLite；生产用 MySQL 时在 .env 里设置 DB_DRIVER=mysql 和 DB_DSN 即可覆盖
-ENV DB_DRIVER=sqlite
-ENV DB_DSN=/app/data/studyplanet.db
+# 数据库固定使用 MySQL（DB_DSN 通过 .env / compose environment 注入）
 ENV SERVER_PORT=8080
 EXPOSE 8080
 STOPSIGNAL SIGTERM

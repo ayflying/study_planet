@@ -98,6 +98,27 @@ func appliedVersions(db *sqlx.DB) (map[int]bool, error) {
 	return applied, rows.Err()
 }
 
+// convertLegacyMigrations 兼容旧 golang-migrate 版本表：旧格式只存一行最新版本（含 dirty 列），
+// 新格式按“每个已应用版本一行”记录。检测到旧格式时，把 1..最新版本 全部补记为新格式行。
+func convertLegacyMigrations(db *sqlx.DB) error {
+	var row struct {
+		Version int
+		Dirty   bool
+	}
+	if err := db.Get(&row, "SELECT version, dirty FROM schema_migrations LIMIT 1"); err != nil {
+		return nil // 没有 dirty 列，已是新格式
+	}
+	if row.Dirty {
+		return fmt.Errorf("数据库存在未完成的迁移（dirty 版本 %d），请先人工修复 schema_migrations 表", row.Version)
+	}
+	for v := 1; v < row.Version; v++ {
+		if _, err := db.Exec("INSERT INTO schema_migrations(version,name) VALUES(?,?)", v, fmt.Sprintf("legacy-%06d", v)); err != nil {
+			return fmt.Errorf("转换旧迁移版本记录失败（版本 %d）: %w", v, err)
+		}
+	}
+	return nil
+}
+
 // Migrate 启动时自动升级数据库结构：空库全量建表，已有库按版本表增量执行；无变更时跳过。
 func Migrate(driver, dsn string) error {
 	driver = strings.ToLower(driver)
@@ -114,6 +135,12 @@ func Migrate(driver, dsn string) error {
 	}
 	if err := ensureMigrationsTable(conn, driver); err != nil {
 		return fmt.Errorf("初始化迁移版本表失败: %w", err)
+	}
+	// 兼容旧 golang-migrate 单行版本表（SQLite 老库遗留）
+	if driver != "mysql" {
+		if err := convertLegacyMigrations(conn); err != nil {
+			return err
+		}
 	}
 	applied, err := appliedVersions(conn)
 	if err != nil {

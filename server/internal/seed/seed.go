@@ -132,15 +132,17 @@ func Run(db *sqlx.DB, pin string) error {
 		}
 	}
 
-	// ---- 家长 PIN（bcrypt 哈希存入 settings）----
+	// ---- 家长 PIN（bcrypt 哈希存入 settings，MySQL/SQLite 方言自适应）----
 	hash, err := bcrypt.GenerateFromPassword([]byte(pin), 10)
 	if err != nil {
 		return err
 	}
-	if _, err := db.Exec(
-		"INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?",
-		string(hash), string(hash),
-	); err != nil {
+	if db.DriverName() == "mysql" {
+		_, err = db.Exec("INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash), string(hash))
+	} else {
+		_, err = db.Exec("INSERT INTO settings(key,value) VALUES('parent_pin',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", string(hash))
+	}
+	if err != nil {
 		return err
 	}
 

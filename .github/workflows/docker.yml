@@ -58,3 +58,39 @@ jobs:
           package-type: container
           min-versions-to-keep: 5
           delete-only-untagged-versions: false
+
+  # CI 构建成功后，通过 Portainer API 重新部署线上环境（环境 pro：PORTAINER_URL / PORTAINER_KEY）
+  deploy-pro:
+    runs-on: ubuntu-latest
+    needs: build-push
+    environment: pro
+    steps:
+      - name: 通过 Portainer API 重新部署线上容器编排
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL || vars.PORTAINER_URL }}
+          PORTAINER_KEY: ${{ secrets.PORTAINER_KEY }}
+          STACK_NAME: studyplanet
+        run: |
+          set -euo pipefail
+          URL="${PORTAINER_URL%/}"
+          # 按名称查找目标 stack
+          STACK_JSON=$(curl -sSf -H "X-API-Key: ${PORTAINER_KEY}" "${URL}/api/stacks")
+          STACK=$(echo "$STACK_JSON" | jq -r --arg n "$STACK_NAME" '.[] | select(.Name == $n) | "\(.Id) \(.EndpointId)"' | head -1)
+          if [ -z "$STACK" ]; then
+            echo "::error::未找到名为 ${STACK_NAME} 的 stack，现有 stacks："
+            echo "$STACK_JSON" | jq -r '.[] | "id=\(.Id) name=\(.Name) endpoint=\(.EndpointId)"'
+            exit 1
+          fi
+          STACK_ID=${STACK%% *}
+          ENDPOINT_ID=${STACK##* }
+          echo "目标 stack id=${STACK_ID}, endpoint=${ENDPOINT_ID}"
+          # 先取当前 compose 文件内容（与 Portainer UI 重新部署行为一致，避免覆盖线上编排）
+          FILE_JSON=$(curl -sSf -H "X-API-Key: ${PORTAINER_KEY}" "${URL}/api/stacks/${STACK_ID}/file")
+          FILE=$(echo "$FILE_JSON" | jq -r '.StackFileContent')
+          echo "当前编排文件已获取（$(echo "$FILE" | wc -l) 行），开始重新部署..."
+          curl -sSf -X POST \
+            -H "X-API-Key: ${PORTAINER_KEY}" \
+            -H "Content-Type: application/json" \
+            "${URL}/api/stacks/${STACK_ID}/update?endpointId=${ENDPOINT_ID}" \
+            -d "$(jq -n --arg f "$FILE" '{stackFileContent:$f, prune:true, pullImage:true}')"
+          echo "重新部署已触发：ghcr.io/ayflying/study_planet:latest"

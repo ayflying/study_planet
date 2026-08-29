@@ -29,7 +29,3 @@ jobs:
               (.Labels["com.docker.compose.project"] // "-"),
               (.Labels["com.docker.compose.service"] // "-")
             ] | @tsv' | column -t -s $'\t'
-          # stack 44 信息
-          echo "=== stack 44 ==="
-          curl -sSf -H "X-API-Key: ${KEY}" "${URL}/api/stacks/44" \
-            | jq '{Id, Name, Status, EndpointId, CreationDate, UpdateDate}'

@@ -24,7 +24,7 @@
 ### 数据库
 
 - [x] 自研轻量迁移器（golang-migrate MySQL 多语句缺陷替代方案）
-- [x] 双方言迁移脚本（`migrations/sqlite/` + `migrations/mysql/`）
+- [x] MySQL 单方言迁移脚本（`migrations/mysql/`，SQLite 支持已移除）
 - [x] 生产切换 MySQL，空库自动建表 + 种子数据，真实库全链路验证通过
 - [x] MySQL 兼容修复：保留字反引号、nullable username、`ON DUPLICATE KEY`、`LastInsertId()`
 
@@ -53,7 +53,7 @@
 
 - [ ] JWT 加入签发时间校验与可选吊销（当前无过期，依赖主动退出）
 - [ ] 接口限流（登录接口防爆破）
-- [ ] SQLite → MySQL 数据搬移脚本（存量学习数据迁移）
+- [x] ~~SQLite → MySQL 数据搬移脚本~~（已全量使用 MySQL，无需搬移）
 
 ## 中期规划 🔭
 

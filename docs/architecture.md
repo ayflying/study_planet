@@ -19,7 +19,7 @@
 └──────────────┬──────────────┘
                │ sqlx + ? 占位符
                ▼
-     MySQL（推荐，远程库）或 SQLite（默认，容器卷 /app/data）
+     MySQL（远程库，唯一支持数据库）
 ```
 
 ## 技术选型
@@ -29,7 +29,7 @@
 | 客户端 | Vue 3 + Vite | 单文件主组件 `App.vue` + 全局 `style.css`，无路由库 |
 | 服务端 | Go + GoFrame v2 | `gf init` 脚手架分层：cmd / controller / logic / service / model；业务实现在 `internal/logic/studyplanet`（`sStudyPlanet`），`gf gen service` 生成 `internal/service` 接口层，controller 仅依赖接口 |
 | 数据访问 | GoFrame ORM dao + jmoiron/sqlx | 学生/任务/奖励等 CRUD 走 GF `dao` 层（`g.DB()` 数据源，`internal/gdbinit` 注册）；复杂查询、内容库与排行榜模块保留 sqlx 直连 |
-| 数据库 | MySQL（推荐）/ SQLite | 驱动：`go-sql-driver/mysql`、`glebarez/go-sqlite`（CGO-free，GF 与 sqlx 共用同一驱动注册） |
+| 数据库 |  MySQL | 驱动：`go-sql-driver/mysql`（GF 与 sqlx 共用同一驱动注册） |
 | 迁移 | 自研轻量迁移器 | SQL 内嵌 `embed.FS`，启动时逐语句执行，版本表 `schema_migrations` |
 | 认证 | Casdoor SSO（OIDC）+ PIN 回退 | 服务端签发 JWT（HS256），长期有效直至主动退出 |
 | 部署 | Docker Compose + GitHub Actions | 镜像 `ghcr.io/ayflying/study_planet`，`latest` + 版本双标签 |
@@ -65,7 +65,7 @@ studyplanet/
 │   │   ├── db/
 │   │   │   ├── db.go                # Open（双驱动）+ Migrate（自研迁移器）
 │   │   │   └── migrations/
-│   │   │       ├── sqlite/          # 000001~000003（SQLite 方言）
+│   │   │       └── mysql/           # MySQL 方言迁移脚本
 │   │   │       └── mysql/           # 000001（MySQL 全量建表）
 │   │   └── seed/seed.go             # 空库种子数据（五年级示例）
 │   ├── manifest/config/config.yaml  # 默认配置
@@ -91,13 +91,13 @@ HTTP 请求
   → controller（router.go 绑定）
     → service 接口（gf gen service 生成）
       → logic/studyplanet 实现（sqlx 直查 + GF dao CRUD）
-        → MySQL / SQLite
+        → MySQL
 ```
 
 ## 启动流程（internal/cmd/cmd.go）
 
 1. `config.Load()`：读 yaml，环境变量覆盖。
-2. `db.Open(driver, dsn)`：按驱动建立连接，Ping 验证。
+2. `db.Migrate(dsn)`：连接 MySQL 并 Ping 验证。
 3. `db.Migrate`：确保 `schema_migrations` 表 → 比对版本 → 逐语句执行缺失迁移（MySQL 按语句拆分，遇注释/空行跳过）。
 4. `seed.Run`：`children` 表为空时写入示例数据（幂等）。
 5. `BindRoutes`：注册 API 路由。

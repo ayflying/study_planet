@@ -10,9 +10,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/go-sql-driver/mysql"
-	// SQLite 驱动（纯 Go 实现，无需 CGO）由 GF contrib 同源提供；
-	// 只在此处注册一次驱动名 "sqlite"，GF contrib/drivers/sqlite 复用同一驱动。
-	_ "github.com/glebarez/go-sqlite"
 )
 
 //go:embed migrations/*/*.sql
@@ -22,15 +19,6 @@ type migrationFile struct {
 	version int
 	name    string
 	upSQL   string
-}
-
-// normDriver 规范驱动名（sqlite3 → sqlite）。
-func normDriver(driver string) string {
-	driver = strings.ToLower(driver)
-	if driver == "sqlite3" {
-		return "sqlite"
-	}
-	return driver
 }
 
 func loadMigrations(driver string) ([]migrationFile, error) {
@@ -81,11 +69,7 @@ func splitStatements(sqlText string) []string {
 	return stmts
 }
 
-func ensureMigrationsTable(db *sqlx.DB, driver string) error {
-	if driver == "sqlite" {
-		_, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER NOT NULL PRIMARY KEY, name TEXT NOT NULL DEFAULT '', applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
-		return err
-	}
+func ensureMigrationsTable(db *sqlx.DB) error {
 	_, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_migrations (version BIGINT NOT NULL PRIMARY KEY, name VARCHAR(255) NOT NULL DEFAULT '', applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 	return err
 }
@@ -107,33 +91,24 @@ func appliedVersions(db *sqlx.DB) (map[int]bool, error) {
 	return applied, rows.Err()
 }
 
-// Migrate 启动时自动升级数据库结构：空库全量建表，已有库按版本表增量执行；无变更时跳过。
-// 支持 mysql 与 sqlite（本地开发免配置）双驱动。
-func Migrate(driver, dsn string) error {
-	driver = normDriver(driver)
-	if driver != "mysql" && driver != "sqlite" {
-		return fmt.Errorf("db: 不支持的数据库驱动 %s（仅支持 mysql/sqlite）", driver)
-	}
-	conn, err := sqlx.Open(driver, dsn)
+// Migrate 启动时自动升级数据库结构（仅 MySQL）：空库全量建表，已有库按版本表增量执行；无变更时跳过。
+func Migrate(dsn string) error {
+	conn, err := sqlx.Open("mysql", dsn)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	// SQLite 并发写限制：单连接避免 database is locked
-	if driver == "sqlite" {
-		conn.SetMaxOpenConns(1)
-	}
 	if err := conn.Ping(); err != nil {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
-	if err := ensureMigrationsTable(conn, driver); err != nil {
+	if err := ensureMigrationsTable(conn); err != nil {
 		return fmt.Errorf("初始化迁移版本表失败: %w", err)
 	}
 	applied, err := appliedVersions(conn)
 	if err != nil {
 		return fmt.Errorf("读取迁移版本失败: %w", err)
 	}
-	migrations, err := loadMigrations(driver)
+	migrations, err := loadMigrations("mysql")
 	if err != nil {
 		return fmt.Errorf("加载迁移脚本失败: %w", err)
 	}

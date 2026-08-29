@@ -26,8 +26,7 @@ type ServerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Driver string
-	DSN    string
+	DSN string
 }
 
 type ParentConfig struct {
@@ -102,7 +101,7 @@ func getBool(c *gcfg.Config, ctx context.Context, key string, def bool) bool {
 
 // Load 读取配置；环境变量优先级高于文件：
 //
-//	SERVER_PORT / DB_DRIVER（仅支持 mysql） / DB_DSN / PARENT_PIN / JWT_SECRET
+//	SERVER_PORT / DB_DSN / PARENT_PIN / JWT_SECRET
 func Load() *Config {
 	c := g.Cfg()
 	ctx := context.Background()
@@ -110,8 +109,7 @@ func Load() *Config {
 	cfg := &Config{}
 	cfg.Server.Port = getInt(c, ctx, "server.port", 8080)
 	cfg.Server.CORS = getStr(c, ctx, "server.cors", "*")
-	cfg.Database.Driver = getStr(c, ctx, "database.driver", "sqlite")
-	cfg.Database.DSN = getStr(c, ctx, "database.dsn", "data/studyplanet.db")
+	cfg.Database.DSN = getStr(c, ctx, "database.dsn", "")
 	cfg.Parent.Pin = getStr(c, ctx, "parent.pin", "1234")
 	cfg.Parent.JWTSecret = getStr(c, ctx, "parent.jwtSecret", "change-me-in-prod")
 	cfg.Seed.Enabled = getBool(c, ctx, "seed.enabled", true)
@@ -125,9 +123,6 @@ func Load() *Config {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.Server.Port = n
 		}
-	}
-	if v := os.Getenv("DB_DRIVER"); v != "" {
-		cfg.Database.Driver = v
 	}
 	if v := os.Getenv("DB_DSN"); v != "" {
 		cfg.Database.DSN = v

@@ -6,17 +6,9 @@
 
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
-| `DB_DRIVER` | `sqlite` | `sqlite` 或 `mysql` |
-| `DB_DSN` | `data/studyplanet.db` | SQLite 为文件路径；MySQL 为 DSN |
+| `DB_DSN` | 无（必填） | MySQL 连接串 `user:pass@tcp(host:3306)/db?charset=utf8mb4&parseTime=true&loc=Local` |
 
-MySQL DSN 示例（`.env`，不入库）：
-
-```text
-DB_DRIVER=mysql
-DB_DSN=用户名:密码@tcp(主机:3306)/库名?charset=utf8mb4&parseTime=true&loc=Local
-```
-
-生产当前使用 MySQL（远程库），容器部署通过 `.env` 注入；SQLite 仅用于本地快速开发。
+> 数据库固定使用 MySQL，已移除 SQLite 双驱动支持（2026-08-29）。`DB_DRIVER` 环境变量已废弃。
 
 ## 迁移机制（自研轻量迁移器）
 
@@ -28,12 +20,11 @@ DB_DSN=用户名:密码@tcp(主机:3306)/库名?charset=utf8mb4&parseTime=true&l
 4. **版本回退**（库版本 > 脚本版本）→ 报错拒绝启动，不静默破坏数据。
 5. 每个版本脚本按语句拆分逐条执行（MySQL 驱动不支持多语句），已执行版本跳过。
 
-迁移目录按方言组织：
+迁移目录（仅 MySQL 方言）：
 
 ```text
 server/internal/db/migrations/
-├── sqlite/            # 000001_init / 000002_multi_student / 000003_practice_sessions
-└── mysql/             # 000001_init（全量建表，对应 SQLite 三个版本合并后的最终结构）
+└── mysql/             # 000001_init 全量建表 + 000004 起增量迁移
 ```
 
 新增迁移步骤见 [development.md](development.md)。
@@ -262,6 +253,6 @@ server/internal/db/migrations/
 
 1. `settings.key` 是保留字 → 一律写 `` `key` ``。
 2. `children.username` 空值写 `NULL` 不写 `''`（否则触发唯一冲突）。
-3. upsert 用 `ON DUPLICATE KEY UPDATE`（SQLite 为 `ON CONFLICT ... DO UPDATE`）。
+3. upsert 用 `ON DUPLICATE KEY UPDATE`。
 4. 取自增 ID 用 `res.LastInsertId()`。
 5. 时间统一 `2006-01-02 15:04:05` 格式字符串 + `parseTime=true`。

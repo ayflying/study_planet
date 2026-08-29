@@ -2,7 +2,7 @@
 
 ## 架构
 
-单容器 `studyplanet-server`（GoFrame 托管 Vue 静态资源 + API），对外端口 `18180:8080`。数据库推荐外部 MySQL，SQLite 仅本地开发。
+单容器 `studyplanet-server`（GoFrame 托管 Vue 静态资源 + API），对外端口 `18180:8080`。数据库固定使用外部 MySQL。
 
 ## Docker Compose
 
@@ -17,7 +17,6 @@ services:
     env_file: [.env]
     environment: [TZ=Asia/Shanghai]
     ports: ["18180:8080"]
-    volumes: [db:/app/data]     # SQLite 模式数据卷；MySQL 模式不依赖
     healthcheck:
       test: ["CMD","wget","-qO-","http://localhost:8080/api/health"]
       interval: 30s
@@ -39,8 +38,7 @@ curl http://localhost:18180/api/health
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `DB_DRIVER` | 是 | `mysql`（生产） / `sqlite`（开发） |
-| `DB_DSN` | 是 | MySQL DSN 或 SQLite 文件路径 |
+| `DB_DSN` | 是 | MySQL 连接串（生产必须注入） |
 | `PARENT_PIN` | 建议 | 初始 PIN（仅空库种子写入；之后用接口改） |
 | `JWT_SECRET` | 必须 | ≥32 位随机串；**更换后所有登录态失效** |
 | `CASDOOR_ENDPOINT/CLIENT_ID/CLIENT_SECRET` | 可选 | 三项齐备切换 Casdoor 登录 |

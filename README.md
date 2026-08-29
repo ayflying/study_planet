@@ -7,7 +7,7 @@
 ## 项目分层
 
 - `client/`：Vue 3 + Vite 学习星球工作台，按组件维护页面和玩法；构建产物由 GoFrame 静态文件服务直接托管。
-- `server/`：GoFrame API、静态资源服务、SQLite 数据库迁移、种子数据与 Casdoor 登录。
+- `server/`：GoFrame API、静态资源服务、MySQL 数据库迁移、种子数据与 Casdoor 登录。
 - 外部访问地址维持不变：`http://<host>:18180/`，单容器同时提供页面与 API。
 
 ## 功能总览
@@ -17,12 +17,12 @@
 - **家长认证**：
   - **Casdoor SSO**（推荐）：配置环境变量后自动启用，OIDC 授权码流程，家长信息落库 `parents` 表，签发本站 JWT；
   - **PIN 回退**：未配置 Casdoor 时自动启用 PIN 登录（bcrypt 存储）。
-- **迁移模块**：`golang-migrate` + 内嵌 SQL，启动自动升级，版本表 `schema_migrations`；SQLite 现用，日后可平滑切 Postgres/MySQL。
+- **迁移模块**：自研轻量迁移器 + 内嵌 SQL（`embed.FS`），启动自动升级，版本表 `schema_migrations`。
 
 ## 快速开始
 
 ```bash
-# 本地运行服务端 API（默认 :8080，SQLite ./data/studyplanet.db）
+# 本地运行服务端 API（默认 :8080，需 DB_DSN 指向 MySQL）
 cd server && go run .
 
 # Docker Compose：GoFrame server 同时托管 Vue 静态资源与 API
@@ -102,16 +102,16 @@ environment:
 | 环境变量 | 默认 | 说明 |
 |---|---|---|
 | `SERVER_PORT` | 8080 | 监听端口 |
-| `DB_DSN` | data/studyplanet.db | SQLite 文件路径 |
+| `DB_DSN` | 无（必填） | MySQL 连接串 |
 | `PARENT_PIN` | 1234 | 种子 PIN（仅首库初始化写库） |
 | `JWT_SECRET` | change-me-in-prod | 务必改随机长字符串 |
 | `CASDOOR_*` | 空 | 见上节 |
 
 ## 数据库
 
-支持 MySQL（生产推荐）与 SQLite（本地开发）。迁移机制、全部表结构、种子数据与 MySQL 兼容要点见 [docs/database.md](docs/database.md)。
+数据库固定使用 MySQL。迁移机制、全部表结构与种子数据见 [docs/database.md](docs/database.md)。
 
-新增迁移：在 `server/internal/db/migrations/sqlite/` 与 `migrations/mysql/` 同步添加下一版本号脚本，启动自动执行。开发细节见 [docs/development.md](docs/development.md)。
+新增迁移：在 `server/internal/db/migrations/mysql/` 添加下一版本号脚本，启动自动执行。开发细节见 [docs/development.md](docs/development.md)。
 
 ## 发版与 CI
 
@@ -155,7 +155,7 @@ studyplanet/
 │   └── Dockerfile                # Vue 构建 + GoFrame 运行镜像
 ├── docs/                         # 项目文档（架构/数据库/接口/设计/开发/部署/计划）
 ├── VERSION                        # 双镜像统一版本
-└── docker-compose.yml            # 单 GoFrame 容器 + SQLite 数据卷
+└── docker-compose.yml            # 单 GoFrame 容器（数据库走外部 MySQL）
 ```
 
 ## 文档
@@ -174,4 +174,4 @@ studyplanet/
 
 ## 在线实例
 
-部署后访问 `http://<your-host>:<port>/api/health` 验证；宿主端口冲突时改 `docker-compose.yml` 的 `ports` 即可；SQLite 落卷 `db`，重建容器不丢数据。
+部署后访问 `http://<your-host>:<port>/api/health` 验证；宿主端口冲突时改 `docker-compose.yml` 的 `ports` 即可。

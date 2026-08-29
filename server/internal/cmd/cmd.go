@@ -37,12 +37,12 @@ var Main = gcmd.Command{
 	Brief: "启动 StudyPlanet HTTP API 服务",
 	Func: func(ctx context.Context, parser *gcmd.Parser) error {
 		cfg := config.Load()
-		if err := db.Migrate(cfg.Database.Driver, cfg.Database.DSN); err != nil {
+		// 数据库固定使用 MySQL：先迁移表结构，再注册 ORM 数据源
+		if err := db.Migrate(cfg.Database.DSN); err != nil {
 			return err
 		}
 
-		// GoFrame ORM 数据源：dao 层与业务层统一走 g.DB()（MySQL only）
-		if err := gdbinit.Setup(cfg.Database.Driver, cfg.Database.DSN); err != nil {
+		if err := gdbinit.Setup(cfg.Database.DSN); err != nil {
 			return err
 		}
 		orm := g.DB()

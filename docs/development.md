@@ -5,7 +5,7 @@
 - Go ≥ 1.24（服务端）
 - Node ≥ 22（客户端构建）
 - Docker + Docker Compose（容器化运行）
-- 可选：MySQL 8+（生产推荐；本地开发默认 SQLite 免配置）
+- 必须：MySQL 8+（唯一支持数据库）
 
 ## 本地开发
 
@@ -13,7 +13,7 @@
 
 ```bash
 cd server
-go run .            # 默认 :8080，SQLite ./data/studyplanet.db，PIN 1234
+go run .            # 默认 :8080，需 DB_DSN 指向 MySQL
 ```
 
 首次启动自动：建库 → 迁移建表 → 写种子数据。删除 `data/studyplanet.db` 即可重置。
@@ -58,14 +58,11 @@ docker compose config
 
 ## 新增数据库迁移
 
-迁移脚本按方言分目录，**两边都要加**（保持 SQLite/MySQL 结构同步）：
+迁移脚本目录：`server/internal/db/migrations/mysql/`。
 
 ```bash
 # 1. 新版本号 = 现有最大版本 + 1
-server/internal/db/migrations/sqlite/000004_your_change.up.sql
-server/internal/db/migrations/sqlite/000004_your_change.down.sql
 server/internal/db/migrations/mysql/000004_your_change.up.sql
-server/internal/db/migrations/mysql/000004_your_change.down.sql
 ```
 
 注意事项：
@@ -73,19 +70,17 @@ server/internal/db/migrations/mysql/000004_your_change.down.sql
 - MySQL 脚本会被逐语句执行，**一条语句写一行**，不要用存储过程/触发器多语句块。
 - `settings.key` 写成 `` `key` ``（保留字）。
 - 迁移器按版本号顺序执行、跳过已应用版本；库版本回退会拒绝启动。
-- 本地重置验证：SQLite 直接删文件；MySQL 建议新建空库或手动 `DROP TABLE` 后重启。
+- 本地重置验证：建议新建空库或手动 `DROP TABLE` 后重启。
 
-## SQLite / MySQL 双兼容写 SQL
+## MySQL SQL 写法要点
 
 | 场景 | 写法 |
 |---|---|
-| 占位符 | 一律 `?`（sqlx 双兼容） |
-| upsert | 按驱动分支：SQLite `ON CONFLICT(...) DO UPDATE`；MySQL `ON DUPLICATE KEY UPDATE` |
-| 自增 ID | `res.LastInsertId()`（两边通用，勿用 `last_insert_rowid()`） |
+| 占位符 | 一律 `?` |
+| upsert | `ON DUPLICATE KEY UPDATE` |
+| 自增 ID | `res.LastInsertId()` |
 | 可空唯一列 | 空值写 `NULL` 不写 `''` |
 | 保留字 | `key`、`rank` 等加反引号 |
-
-参考现网代码：`handlers.go` 中按 `s.Driver` 分支的 upsert 写法。
 
 ## 环境变量
 

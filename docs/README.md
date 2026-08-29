@@ -16,7 +16,7 @@
 
 ## 快速入口
 
-- 本地运行：`cd server && go run .`（默认 `:8080`，SQLite）
+- 本地运行：`cd server && go run .`（默认 `:8080`，需 `DB_DSN` 指向 MySQL）
 - Docker 运行：`docker compose up -d --build`，访问 `http://localhost:18180/`
 - 健康检查：`GET /api/health`
 - 当前版本：见根目录 `VERSION` 文件

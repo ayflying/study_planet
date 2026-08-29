@@ -1,0 +1,35 @@
+# 临时诊断 workflow：查生产 Portainer stack 容器状态（手动触发，用完即删）
+name: portainer-diag
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    environment: pro
+    steps:
+      - name: 查询生产容器清单
+        env:
+          URL: ${{ secrets.PORTAINER_URL }}
+          KEY: ${{ secrets.PORTAINER_KEY }}
+        run: |
+          set -e
+          # 列出所有 endpoint，确认 endpoint id
+          echo "=== endpoints ==="
+          curl -sSf -H "X-API-Key: ${KEY}" "${URL}/api/endpoints" \
+            | jq -r '.[] | "\(.Id) | \(.Name) | \(.Type) | \(.Status)"'
+          # 列出该 endpoint 全部容器（含已停止），输出名称/状态/镜像/compose 项目标签
+          echo "=== containers (all) ==="
+          curl -sSf -H "X-API-Key: ${KEY}" "${URL}/api/endpoints/3/docker/containers/json?all=true" \
+            | jq -r '.[] | [
+              .Names[0],
+              .State,
+              .Status,
+              .Image,
+              (.Labels["com.docker.compose.project"] // "-"),
+              (.Labels["com.docker.compose.service"] // "-")
+            ] | @tsv' | column -t -s $'\t'
+          # stack 44 信息
+          echo "=== stack 44 ==="
+          curl -sSf -H "X-API-Key: ${KEY}" "${URL}/api/stacks/44" \
+            | jq '{Id, Name, Status, EndpointId, CreationDate, UpdateDate}'

@@ -84,13 +84,18 @@ jobs:
           STACK_ID=${STACK%% *}
           ENDPOINT_ID=${STACK##* }
           echo "目标 stack id=${STACK_ID}, endpoint=${ENDPOINT_ID}"
-          # 先取当前 compose 文件内容（与 Portainer UI 重新部署行为一致，避免覆盖线上编排）
+          # 取当前 compose 文件与 env 变量（PUT 更新必须回传 env，否则 stack 环境变量会丢）
           FILE_JSON=$(curl -sSf -H "X-API-Key: ${PORTAINER_KEY}" "${URL}/api/stacks/${STACK_ID}/file")
           FILE=$(echo "$FILE_JSON" | jq -r '.StackFileContent')
-          echo "当前编排文件已获取（$(echo "$FILE" | wc -l) 行），开始重新部署..."
-          curl -sSf -X POST \
+          ENV_JSON=$(curl -sSf -H "X-API-Key: ${PORTAINER_KEY}" "${URL}/api/stacks/${STACK_ID}" | jq -c '.Env // []')
+          echo "当前编排文件已获取（$(echo "$FILE" | wc -l) 行，env $(echo "$ENV_JSON" | jq length) 项），开始重新部署..."
+          HTTP_CODE=$(curl -sS -o /tmp/put-resp.txt -w '%{http_code}' -X PUT \
             -H "X-API-Key: ${PORTAINER_KEY}" \
             -H "Content-Type: application/json" \
-            "${URL}/api/stacks/${STACK_ID}/update?endpointId=${ENDPOINT_ID}" \
-            -d "$(jq -n --arg f "$FILE" '{stackFileContent:$f, prune:true, pullImage:true}')"
-          echo "重新部署已触发：ghcr.io/ayflying/study_planet:latest"
+            "${URL}/api/stacks/${STACK_ID}?endpointId=${ENDPOINT_ID}" \
+            -d "$(jq -n --arg f "$FILE" --argjson e "$ENV_JSON" '{stackFileContent:$f, env:$e, prune:true, pullImage:true}')")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Portainer 返回 ${HTTP_CODE}: $(cat /tmp/put-resp.txt)"
+            exit 1
+          fi
+          echo "重新部署成功：ghcr.io/ayflying/study_planet:latest"

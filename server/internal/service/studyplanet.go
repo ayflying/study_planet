@@ -99,6 +99,20 @@ type (
 		ListWrongQuestions(ctx context.Context, req *v1.ListWrongQuestionsReq) (res *v1.ListWrongQuestionsRes, err error)
 		// WeeklyLeaderboard 周榜：返回当前 ISO 周经验值最高的学生名单。
 		WeeklyLeaderboard(ctx context.Context, req *v1.WeeklyLeaderboardReq) (res *v1.WeeklyLeaderboardRes, err error)
+		// PetGet 我的宠物（首次自动领取）。
+		PetGet(ctx context.Context, req *v1.PetGetReq) (res *v1.PetGetRes, err error)
+		// PetFeed 投喂宠物。
+		PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1.PetFeedRes, err error)
+		// PetRename 宠物改名。
+		PetRename(ctx context.Context, req *v1.PetRenameReq) (res *v1.PetRenameRes, err error)
+		// PetTick 宠物状态惰性结算。
+		PetTick(ctx context.Context, req *v1.PetDecayReq) (res *v1.PetDecayRes, err error)
+		// PetFoods 食物列表。
+		PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *v1.PetFoodsRes, err error)
+		// BattleRank 对战段位榜。
+		BattleRank(ctx context.Context, req *v1.BattleRankReq) (res *v1.BattleRankRes, err error)
+		// BattleHistory 我的历史对战。
+		BattleHistory(ctx context.Context, req *v1.BattleHistoryReq) (res *v1.BattleHistoryRes, err error)
 	}
 )
 

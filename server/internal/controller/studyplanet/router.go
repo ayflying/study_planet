@@ -49,6 +49,13 @@ func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 			ctrl.ContentAnswer,
 			ctrl.WeeklyLeaderboard,
 			ctrl.ListWrongQuestions,
+			ctrl.PetGet,
+			ctrl.PetFeed,
+			ctrl.PetRename,
+			ctrl.PetTick,
+			ctrl.PetFoods,
+			ctrl.BattleRank,
+			ctrl.BattleHistory,
 		)
 
 		// ---- 家长鉴权：管理操作 ----

@@ -73,3 +73,125 @@
 .loading-dialog p{margin:0;color:#6b6480;font-size:14px;font-weight:800}
 .spinner{width:38px;height:38px;border-radius:50%;border:4px solid #ece7fa;border-top-color:#9b6cff;animation:sp-spin .8s linear infinite}
 @keyframes sp-spin{to{transform:rotate(360deg)}}
+
+/* ============ 填空题输入 + 键位提示 ============ */
+.fill-box{display:flex;gap:8px;margin:16px auto 0;max-width:420px}
+.fill-input{flex:1;border:2.5px solid #E7DCCE;border-radius:14px;padding:13px 15px;font-size:19px;font-weight:800;text-align:center;background:#fff;color:#3A2E25;outline:none}
+.fill-input:focus{border-color:#9b6cff;background:#fbf9ff}
+.fill-go{border:0;border-radius:14px;background:linear-gradient(135deg,#9b6cff,#7e57e0);color:#fff;font-weight:900;padding:0 20px;cursor:pointer;box-shadow:0 6px 14px rgba(126,87,224,.25)}
+.fill-go:active{transform:translateY(2px)}
+.fill-verdict{margin-top:12px;font-weight:900}
+.fill-verdict.ok{color:#22b573}
+.fill-verdict.no{color:#e05252}
+.kbd-num{float:right;font-style:normal;font-size:11px;color:#b7b3cc;border:1px solid #e5e2f2;border-radius:5px;padding:0 5px;margin-left:8px}
+.kbd-hint{margin:12px 0 0;color:#b7b3cc;font-size:11.5px}
+.kbd-hint b{color:#8f7bd8}
+.kbdSel{border-color:#9b6cff!important;background:#f6f2ff!important}
+/* ============ 真人对战 ============ */
+.battle{display:flex;flex-direction:column;gap:14px}
+.battle-match{padding:40px 20px;text-align:center}
+.vs-orbit{display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:14px}
+.vs-me,.vs-q{width:70px;height:70px;display:grid;place-items:center;border-radius:50%;font-size:36px;background:linear-gradient(145deg,#ffdae8,#e9ddff);box-shadow:0 8px 20px rgba(159,94,216,.18)}
+.vs-q{background:linear-gradient(145deg,#d9f7ff,#c7d7ff);animation:qPulse 1s infinite alternate}
+@keyframes qPulse{to{transform:scale(1.1)}}
+.vs-dot{width:12px;height:12px;border-radius:50%;background:#ff6b9d;animation:qPulse .6s infinite alternate}
+.match-pulse{display:flex;justify-content:center;gap:7px;margin:18px 0}
+.match-pulse i{width:9px;height:9px;border-radius:50%;background:#bd9dff;animation:dotJump .9s infinite}
+.match-pulse i:nth-child(2){animation-delay:.15s}
+.match-pulse i:nth-child(3){animation-delay:.3s}
+@keyframes dotJump{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.quit-link{border:0;background:transparent;color:#a08cc0;font-weight:800;cursor:pointer;margin-top:10px}
+.battle-hud{display:flex;align-items:center;justify-content:space-between;padding:12px 14px}
+.hud-side{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:74px}
+.hud-side b{font-size:24px;color:#8e63d5}
+.hud-side small{font-size:11px;color:#8b8ba2;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud-avatar{font-size:30px}
+.hud-mid{display:flex;flex-direction:column;align-items:center;gap:3px}
+.hud-qnum{font-size:11px;color:#a08cc0;font-weight:900}
+.hud-timer{position:relative;width:62px;height:62px}
+.hud-timer svg{width:100%;height:100%;transform:rotate(-90deg)}
+.timer-bg{fill:none;stroke:#eee7fa;stroke-width:7}
+.timer-fg{fill:none;stroke:#9b6cff;stroke-width:7;stroke-linecap:round;stroke-dasharray:214;transition:stroke-dashoffset 1s linear,stroke .3s}
+.hud-timer.danger .timer-fg{stroke:#ff4d6d}
+.hud-timer b{position:absolute;inset:0;display:grid;place-items:center;font-size:23px;color:#7b57ca}
+.hud-timer.danger b{color:#ff4d6d;animation:qPulse .5s infinite alternate}
+.battle-q h2{min-height:64px}
+.battle-options button.picked{opacity:.55}
+.battle-verdict{margin-top:14px;font-weight:900;font-size:17px}
+.battle-verdict.ok{color:#22b573}
+.battle-verdict.no{color:#e05252}
+.battle-verdict small{display:block;font-size:13px;color:#8b8ba2;margin-top:4px}
+.battle-result{max-width:400px;width:100%;padding:28px 22px;text-align:center}
+.battle-result.win{background:linear-gradient(160deg,#fffbe8,#fff 60%)!important}
+.result-crown{font-size:56px;margin-bottom:4px;animation:bounce .6s infinite alternate}
+.battle-score{display:flex;align-items:center;justify-content:center;gap:16px;margin:14px 0;font-size:40px;font-weight:900;color:#30304a}
+.battle-score i{color:#c9c4e2;font-style:normal}
+.battle-trophies{display:inline-flex;flex-direction:column;align-items:center;background:#fff6e5;border-radius:16px;padding:10px 26px;margin:4px 0 12px}
+.battle-trophies b{font-size:28px;color:#e8930c}
+.battle-trophies span{font-size:11px;color:#b08850}
+.battle-trophies em{font-style:normal;font-weight:900;font-size:14px;margin-top:3px}
+.battle-rewards{list-style:none;margin:0 0 12px;padding:0;text-align:left}
+.battle-rewards li{background:#faf9ff;border-radius:11px;padding:9px 13px;margin-bottom:6px;font-size:13.5px;font-weight:700;color:#5c5470}
+.battle-exp{font-weight:900;color:#765ac2;background:#f3edff;border-radius:12px;padding:8px 18px;display:inline-block;margin-bottom:14px}
+/* ============ 段位主页 ============ */
+.battle-home{display:flex;flex-direction:column;gap:14px}
+.page-title{margin:0;font-size:23px;color:#30304a}
+.arena-hero{display:flex;align-items:center;gap:16px;padding:18px}
+.arena-trophy{font-size:44px}
+.arena-hero h2{margin:0 0 2px;font-size:22px}
+.arena-hero p{margin:0;color:#8b8ba2;font-size:13px}
+.arena-hero p b{color:#e8930c}
+.arena-hero .cta{margin-left:auto;white-space:nowrap}
+.rank-board{padding:18px}
+.rank-board h3{margin:0 0 12px}
+.board-trophy{color:#e8930c;font-weight:900}
+.board-name small{display:block;font-size:11px;color:#a08cc0;font-weight:800}
+.history-box{padding:18px}
+.history-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.history-head h3{margin:0}
+.history-toggle{border:1px solid #eee5ff;border-radius:10px;background:#faf8ff;color:#765ac2;font-weight:800;padding:6px 12px;cursor:pointer}
+.history-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;margin-bottom:6px;background:#fbfbfe}
+.history-badge{width:30px;height:30px;display:grid;place-items:center;border-radius:10px;font-weight:900;font-size:13px}
+.history-badge.win{background:#e5f9ee;color:#1d8a5f}
+.history-badge.lose{background:#feecef;color:#d5496a}
+.history-badge.draw{background:#fff5e0;color:#c98a1b}
+.history-opp{flex:1;font-weight:800;color:#30304a}
+.history-opp small{display:block;font-size:11px;color:#a3a1b8;font-weight:400}
+.history-score{font-weight:900;color:#5c5470}
+.history-trophy{font-size:12px;font-weight:900;min-width:52px;text-align:right}
+.history-trophy.win{color:#22b573}
+.history-trophy.lose{color:#e05252}
+.history-trophy.draw{color:#c98a1b}
+/* ============ 宠物页 ============ */
+.pet-page{display:flex;flex-direction:column;gap:14px}
+.pet-card{padding:22px 18px 18px;background:linear-gradient(160deg,#fffdf5,#f2fbff)!important}
+.pet-stage{position:relative;text-align:center}
+.pet-bubble{display:inline-block;background:#fff;border:1px solid #eee5ff;border-radius:16px;padding:9px 16px;color:#8b7ba2;font-size:13.5px;font-weight:700;box-shadow:0 6px 16px rgba(84,73,132,.08)}
+.pet-avatar{font-size:84px;line-height:1.25;filter:drop-shadow(0 10px 14px rgba(155,108,255,.18))}
+.pet-avatar.hop{animation:bounce .45s infinite alternate}
+.pet-rename{position:absolute;right:6px;top:6px;border:1px solid #eee5ff;background:#fff;border-radius:10px;padding:6px 9px;cursor:pointer}
+.pet-name-row{display:flex;align-items:baseline;justify-content:center;gap:10px;margin:8px 0 14px}
+.pet-name-row b{font-size:21px;color:#30304a}
+.pet-name-row span{color:#8b8ba2;font-size:13px}
+.pet-name-row em{font-style:normal;font-size:13px;color:#765ac2;font-weight:800}
+.pet-bars{display:grid;gap:9px}
+.pet-bar{display:flex;align-items:center;gap:10px}
+.pet-bar label{width:52px;font-size:12px;font-weight:900;color:#8b8ba2;flex:none}
+.pet-bar b{width:56px;text-align:right;font-size:12px;color:#7b57ca;flex:none}
+.bar{flex:1;height:13px;border-radius:999px;background:#efecf9;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:inherit;transition:width .4s}
+.bar-hunger{background:linear-gradient(90deg,#ffd166,#ff9a3d)}
+.bar-aff{background:linear-gradient(90deg,#ff9ec4,#ff6b9d)}
+.bar-exp{background:linear-gradient(90deg,#b79aff,#8e63d5)}
+.food-box{padding:18px}
+.food-box h3{margin:0 0 4px}
+.food-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.food{border:1.5px solid #eee5ff;border-radius:16px;background:#fbfbfe;padding:13px 8px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;transition:.15s}
+.food:hover{border-color:#bd9dff;background:#f8f5ff;transform:translateY(-2px)}
+.food:disabled{opacity:.55;cursor:wait}
+.food-emoji{font-size:32px}
+.food b{font-size:13.5px;color:#30304a}
+.food small{font-size:10.5px;color:#a3a1b8;font-weight:700}
+.quick-icon.pet-icon{background:#fff0f6;font-size:18px}
+.quick-icon.rank2{background:linear-gradient(135deg,#ffc531,#ff9a3d)}
+@media(max-width:600px){.food-grid{grid-template-columns:1fr 1fr}.arena-hero{flex-wrap:wrap}.arena-hero .cta{margin-left:0;width:100%}}

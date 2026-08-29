@@ -55,6 +55,22 @@ var local = &sStudyPlanet{}
 // Study 供外部包获取当前业务实现实例。
 func Study() *sStudyPlanet { return local }
 
+// ExternalAddXP 供 battle 引擎等外部模块给学生加经验（联动周榜）。
+// 返回闭包，避免 battle 直接依赖 logic 内部实现。
+func ExternalAddXP(board *leaderboard.Board) func(childID int, delta int) {
+	return func(childID int, delta int) {
+		if delta == 0 || childID <= 0 {
+			return
+		}
+		if _, err := daoChildren.Ctx(gctx.New()).Where("id", childID).Increment("xp", delta); err != nil {
+			gLog("battle 外部加经验失败 child=%d: %v", childID, err)
+		}
+		if board != nil {
+			board.AddXP(gctx.New(), childID, delta)
+		}
+	}
+}
+
 // ---------- 通用助手 ----------
 
 // gLog 非关键路径日志（失败不影响主流程）。

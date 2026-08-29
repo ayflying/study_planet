@@ -49,4 +49,11 @@ type IStudyplanetV1 interface {
 	AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1.AddTaskRes, err error)
 	DeleteTask(ctx context.Context, req *v1.DeleteTaskReq) (res *v1.DeleteTaskRes, err error)
 	CompleteTask(ctx context.Context, req *v1.CompleteTaskReq) (res *v1.CompleteTaskRes, err error)
+	PetGet(ctx context.Context, req *v1.PetGetReq) (res *v1.PetGetRes, err error)
+	PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1.PetFeedRes, err error)
+	PetRename(ctx context.Context, req *v1.PetRenameReq) (res *v1.PetRenameRes, err error)
+	PetTick(ctx context.Context, req *v1.PetDecayReq) (res *v1.PetDecayRes, err error)
+	PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *v1.PetFoodsRes, err error)
+	BattleRank(ctx context.Context, req *v1.BattleRankReq) (res *v1.BattleRankRes, err error)
+	BattleHistory(ctx context.Context, req *v1.BattleHistoryReq) (res *v1.BattleHistoryRes, err error)
 }

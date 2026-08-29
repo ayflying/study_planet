@@ -11,6 +11,7 @@ import (
 	"github.com/gogf/gf/v2/os/gcmd"
 
 	"studyplanet/internal/config"
+	"studyplanet/internal/battle"
 	studyplanetcontroller "studyplanet/internal/controller/studyplanet"
 	"studyplanet/internal/db"
 	"studyplanet/internal/gdbinit"
@@ -80,6 +81,11 @@ var Main = gcmd.Command{
 			s.SetFileServerEnabled(true)
 		}
 		studyplanetcontroller.BindRoutes(s, cfg)
+
+		// 真人对战 WebSocket：/ws/battle（gorilla 升级，独立于 gf 分组中间件）
+		battleEngine := battle.New()
+		battleEngine.AddXP = studyplanet.ExternalAddXP(board)
+		s.BindHandler("/ws/battle", battleEngine.HandleWS)
 
 		log.Printf("学霸星球 StudyPlanet 服务端已启动，监听 :%d", cfg.Server.Port)
 		s.Run()

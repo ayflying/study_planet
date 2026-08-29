@@ -25,6 +25,19 @@ const newTask = ref({ title: "", type: "学习", due_date: "", points: 5 });
 const newReward = ref({ name: "", cost_points: 20 });
 const newStudent = ref({ name: "", username: "", avatar: "🐣", grade: 1 });
 const showAddStudent = ref(false);
+// ---------- 宠物模式 ----------
+const pet = ref(null), petFoods = ref([]), petFeeding = ref(false), petMsg = ref("");
+const showPetRename = ref(false), petNewName = ref("");
+// ---------- 真人对战 ----------
+const battleWS = ref(null);
+const battlePhase = ref("idle"); // idle | matching | fighting | finished
+const battleMe = ref({ total: 0 }), battleOpp = ref({ total: 0, name: "", avatar: "", isBot: false });
+const battleQs = ref([]), battleIdx = ref(0), battleRemain = ref(10);
+const battlePicked = ref(undefined), battleCorrect = ref(false), battleGain = ref(0);
+const battleFillInput = ref("");
+const battleResult = ref(null);
+const battleRank = ref(null), battleHistory = ref([]);
+const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/battle`;
 const gradeOptions = [
   { value: 1, label: "一年级" },
   { value: 2, label: "二年级" },
@@ -109,9 +122,9 @@ function backToStudent() { canAdmin.value = false; sessionStorage.removeItem("sp
 // 学生→家长：必须重新认证。Casdoor 模式直接跳转 SSO，PIN 模式弹出登录框。
 async function enterAdmin(tab = "overview") { if (!canAdmin.value) { pendingTab.value = tab; if (authMode.value === "casdoor") { location.href = "/api/parent/casdoor/login"; return; } showLogin.value = true; return; } adminTab.value = tab; view.value = "admin"; await loadAdmin(); }
 async function switchStudent(id) { currentStudent.value = id; localStorage.setItem("sp_stu", String(id)); view.value = "home"; await load(); await loadWrong(); }
-async function startUnit(unit) { if (!hasStudent.value) { await enterAdmin("students"); return; } try { const picked = await api(`/content/pick?subject=${unit.kind}&grade=${activeStudent.value?.grade || 1}&limit=5`) || []; if (!picked.length) throw new Error(`「${unit.title}」的题库还是空的，等待资料导入`); let list = picked.map(q => ({ id: q.id, type: "content", subject: q.subject, title: q.question, passage: q.passage || "", subtitle: q.topic || "", options: shuffle(q.options || []), review: false })); list = await mixWrongQuestions(unit.kind, list); if (!list.length) throw new Error("这一关还没有题目"); const s = await api("/sessions", { method: "POST", body: { subject: unit.kind, level: activeStudent.value?.grade || 1, total: list.length } }); lesson.value = unit; questions.value = list; questionIndex.value = 0; combo.value = 0; sessionId.value = s.id; result.value = null; view.value = "lesson"; } catch (e) { fail(e); } }
+async function startUnit(unit) { if (!hasStudent.value) { await enterAdmin("students"); return; } try { const picked = await api(`/content/pick?subject=${unit.kind}&grade=${activeStudent.value?.grade || 1}&limit=5`) || []; if (!picked.length) throw new Error(`「${unit.title}」的题库还是空的，等待资料导入`); let list = picked.map(q => ({ id: q.id, type: "content", subject: q.subject, title: q.question, passage: q.passage || "", subtitle: q.topic || "", options: shuffle(q.options || []), qtype: q.qtype || "choice", fillOpen: (q.qtype === "fill") || !(q.options || []).length, fillInput: "", fillSel: undefined, fillHint: q.qtype === "fill" ? "输入答案（支持分数如 3/4），回车提交" : "输入答案，回车提交", review: false })); list = await mixWrongQuestions(unit.kind, list); if (!list.length) throw new Error("这一关还没有题目"); const s = await api("/sessions", { method: "POST", body: { subject: unit.kind, level: activeStudent.value?.grade || 1, total: list.length } }); lesson.value = unit; questions.value = list; questionIndex.value = 0; combo.value = 0; sessionId.value = s.id; result.value = null; view.value = "lesson"; } catch (e) { fail(e); } }
 // 错题巩固：内容库题目通过 /content/item 回取（服务端判分，前端无答案）
-async function mixWrongQuestions(kind, list) { try { const wrongs = await api(`/wrong-questions?subject=${kind}`) || []; const wrongIds = wrongs.filter(w => !Number(w.resolved)).slice(0, 3).map(w => Number(w.ref_id)); const idSet = new Set(list.map(q => q.id)); const reviewQs = []; for (const wid of wrongIds) { if (idSet.has(wid)) continue; try { const q = await api(`/content/item?id=${wid}`); reviewQs.push({ id: q.id, type: "content", subject: q.subject, title: q.question, passage: q.passage || "", subtitle: q.topic || "", options: shuffle(q.options || []), review: true }); } catch {} } const mixed = []; let wi = 0; list.forEach((q, i) => { mixed.push(q); if ((i + 1) % 2 === 0 && wi < reviewQs.length) mixed.push(reviewQs[wi++]); }); while (wi < reviewQs.length) mixed.push(reviewQs[wi++]); return mixed; } catch { return list; } }
+async function mixWrongQuestions(kind, list) { try { const wrongs = await api(`/wrong-questions?subject=${kind}`) || []; const wrongIds = wrongs.filter(w => !Number(w.resolved)).slice(0, 3).map(w => Number(w.ref_id)); const idSet = new Set(list.map(q => q.id)); const reviewQs = []; for (const wid of wrongIds) { if (idSet.has(wid)) continue; try { const q = await api(`/content/item?id=${wid}`); reviewQs.push({ id: q.id, type: "content", subject: q.subject, title: q.question, passage: q.passage || "", subtitle: q.topic || "", options: shuffle(q.options || []), qtype: q.qtype || "choice", fillOpen: (q.qtype === "fill") || !(q.options || []).length, fillInput: "", fillSel: undefined, fillHint: q.qtype === "fill" ? "输入答案（支持分数如 3/4），回车提交" : "输入答案，回车提交", review: true }); } catch {} } const mixed = []; let wi = 0; list.forEach((q, i) => { mixed.push(q); if ((i + 1) % 2 === 0 && wi < reviewQs.length) mixed.push(reviewQs[wi++]); }); while (wi < reviewQs.length) mixed.push(reviewQs[wi++]); return mixed; } catch { return list; } }
 async function selectOption(o) { const q = activeQuestion.value; if (!q || q.picked !== undefined) return; q.picked = o; try { const r = await api("/content/answer", { method: "POST", body: { id: q.id, answer: o, session_id: sessionId.value } }); q.correct = r.correct ?? false; q.rightAnswer = r.answer || ""; combo.value = q.correct ? (r.combo || combo.value + 1) : 0; if (q.correct) { q.xp = r.xp || 0; playFx(combo.value >= 3 ? "combo" : "right"); } else { playFx("wrong"); } } catch (e) { fail(e); } }
 async function nextQuestion() { if (questionIndex.value + 1 < questions.value.length) { questionIndex.value++; return; } try { result.value = await api(`/sessions/${sessionId.value}/finish`, { method: "POST" }); if (result.value?.stars >= 2) playFx("star"); await load(); await loadWrong(); } catch (e) { fail(e); } }
 function backHome() { result.value = null; view.value = "home"; }
@@ -132,7 +145,124 @@ async function openMyTasks() { try { myTasks.value = await api("/tasks") || []; 
 async function openMyRewards() { try { myRewards.value = await api("/rewards") || []; showMyRewards.value = true; } catch (e) { fail(e); } }
 async function doCompleteTask(id) { try { await api(`/tasks/${id}/complete`, { method: "POST" }); notice.value = "任务完成，积分已到账 🎉"; await openMyTasks(); await load(); } catch (e) { fail(e); } }
 async function doRedeem(id) { try { const r = await api(`/rewards/${id}/redeem`, { method: "POST" }); notice.value = r.message || "已提交兑换，等待家长确认"; await openMyRewards(); } catch (e) { fail(e); } }
-onMounted(async () => { await loadAuth(); await load(); if (parentToken.value) { markAdmin(); await loadAdmin().catch(() => {}); view.value = "admin"; } await loadWrong(); });
+
+// ---------- 宠物模式 ----------
+async function openPet() {
+  if (!hasStudent.value) return;
+  view.value = "pet";
+  try {
+    const [p, foods] = await Promise.all([api("/pet"), api("/pet/foods")]);
+    pet.value = p; petFoods.value = foods || [];
+  } catch (e) { fail(e); }
+}
+async function feedPet(f) {
+  if (petFeeding.value || !pet.value) return;
+  petFeeding.value = true; petMsg.value = "";
+  try {
+    const r = await api("/pet/feed", { method: "POST", body: { food: f.id } });
+    const wasLevel = pet.value.level; pet.value = r.pet; petMsg.value = r.message || "开饭啦～";
+    if (r.level_up) petMsg.value = `🎉 升到 Lv.${pet.value.level}！${petMsg.value}`;
+    if (r.fed_burst) petMsg.value = `💖 好感度爆棚！${petMsg.value}`;
+    void wasLevel;
+  } catch (e) { petMsg.value = e.message || "投喂失败"; } finally { petFeeding.value = false; setTimeout(() => { if (petMsg.value) petMsg.value = ""; }, 2600); }
+}
+async function renamePet() {
+  if (!petNewName.value.trim()) return;
+  try { pet.value = await api("/pet/rename", { method: "POST", body: { name: petNewName.value.trim() } }); showPetRename.value = false; petMsg.value = "改名成功～"; } catch (e) { fail(e); }
+}
+function moodEmoji(p) { return { happy: "😄", normal: "🙂", hungry: "😣", sad: "🥺" }[p?.mood] || "🙂"; }
+
+// ---------- 真人对战 ----------
+function battleSend(obj) { if (battleWS.value?.readyState === 1) battleWS.value.send(JSON.stringify(obj)); }
+function startBattle() {
+  if (!hasStudent.value) return;
+  battlePhase.value = "matching"; battleResult.value = null; battlePicked.value = undefined; battleCorrect.value = false;
+  battleMe.value = { total: 0 }; battleOpp.value = { total: 0, name: "", avatar: "", isBot: false }; battleIdx.value = -1;
+  const ws = new WebSocket(WS_URL);
+  battleWS.value = ws;
+  ws.onopen = () => ws.send(JSON.stringify({ type: "join", student_id: currentStudent.value, subject: "math", grade: activeStudent.value?.grade || 1 }));
+  ws.onmessage = ev => { try { battleMsg(JSON.parse(ev.data)); } catch {} };
+  ws.onclose = () => { if (battlePhase.value !== "finished") battleWS.value = null; };
+  ws.onerror = () => { if (battlePhase.value === "matching") { fail(new Error("对战服务连接失败，请确认服务端已启动")); battlePhase.value = "idle"; } };
+}
+function battleMsg(m) {
+  if (m.type === "matched") {
+    battleOpp.value = m.opponent || {}; battleQs.value = m.questions || [];
+  } else if (m.type === "question_next") {
+    battleIdx.value = m.qindex; battleRemain.value = m.remain || 10; battlePicked.value = undefined; battleCorrect.value = false; battleGain.value = 0;
+    battlePhase.value = "fighting";
+  } else if (m.type === "tick") {
+    if (m.qindex === battleIdx.value) battleRemain.value = m.remain;
+    if (m.opp_total !== undefined) battleOpp.value = { ...battleOpp.value, total: m.opp_total };
+  } else if (m.type === "answer_result") {
+    battlePicked.value = m.qindex; battleCorrect.value = m.correct; battleGain.value = m.score || 0;
+    battleMe.value = { ...battleMe.value, total: m.total };
+    if (m.opp_total !== undefined) battleOpp.value = { ...battleOpp.value, total: m.opp_total };
+  } else if (m.type === "finished") {
+    battleResult.value = m; battlePhase.value = "finished";
+    try { battleWS.value?.close(); } catch {} battleWS.value = null;
+  }
+}
+function battleAnswer(ans) {
+  if (battlePicked.value !== undefined || battlePhase.value !== "fighting") return;
+  battleSend({ type: "answer", qindex: battleIdx.value, answer: ans });
+}
+function battleNext() { /* 服务端自动推进下一题，无需操作 */ }
+function exitBattle() { try { battleWS.value?.close(); } catch {} battleWS.value = null; battlePhase.value = "idle"; }
+// 对战选项键位（1-4 数字键 + 回车提交已聚焦选项由点击完成）
+function battleKeyHandler(e) {
+  if (view.value !== "battle") return;
+  const q = battleQs.value[battleIdx.value];
+  if (battlePhase.value === "fighting" && q && battlePicked.value === undefined) {
+    if (/^[1-9]$/.test(e.key)) { const i = Number(e.key) - 1; if (q.options && q.options[i]) { e.preventDefault(); battleAnswer(q.options[i]); } }
+  } else if (battlePhase.value === "fighting" && battlePicked.value !== undefined && e.key === "Enter") {
+    e.preventDefault(); battleNext();
+  }
+}
+
+// ---------- 段位页 ----------
+async function openBattleHome() {
+  view.value = "battle-home";
+  try { battleRank.value = await api("/battle/rank?limit=20"); } catch (e) { fail(e); }
+}
+async function openBattleHistory() {
+  try { battleHistory.value = await api("/battle/history") || []; } catch (e) { fail(e); }
+}
+
+// ---------- 全局键盘：练习页回车提交/下一题 ----------
+function lessonKeyHandler(e) {
+  if (view.value !== "lesson" || e.key !== "Enter") return;
+  const q = activeQuestion.value;
+  if (!q) return;
+  // 1) 填空题：输入框回车 = 提交答案
+  if (q.fillOpen && q.picked === undefined && q.fillInput?.trim()) { e.preventDefault(); submitFill(q.fillInput.trim()); return; }
+  // 2) 已判分：回车 = 下一题
+  if (q.picked !== undefined) { e.preventDefault(); nextQuestion(); return; }
+  // 3) 选择题：数字键选中后回车 = 确认
+  if (q.options && q.fillSel !== undefined && !q.fillOpen) { e.preventDefault(); selectOption(q.options[q.fillSel]); }
+}
+function lessonNumHandler(e) {
+  if (view.value !== "lesson") return;
+  const q = activeQuestion.value;
+  if (!q || q.picked !== undefined || !q.options) return;
+  if (/^[1-9]$/.test(e.key)) { const i = Number(e.key) - 1; if (q.options[i]) { q.fillSel = i; e.preventDefault(); } }
+}
+// 填空题输入（服务端判分，支持数值/分数/文本）
+async function submitFill(val) {
+  const q = activeQuestion.value;
+  if (!q || q.picked !== undefined || !val) return;
+  q.picked = val;
+  try {
+    const r = await api("/content/answer", { method: "POST", body: { id: q.id, answer: val, session_id: sessionId.value } });
+    q.correct = r.correct ?? false; q.rightAnswer = r.answer || "";
+    combo.value = q.correct ? (r.combo || combo.value + 1) : 0;
+    if (q.correct) { q.xp = r.xp || 0; playFx(combo.value >= 3 ? "combo" : "right"); } else playFx("wrong");
+  } catch (e) { fail(e); }
+}
+onMounted(async () => {
+  window.addEventListener("keydown", e => { lessonKeyHandler(e); battleKeyHandler(e); lessonNumHandler(e); });
+  await loadAuth(); await load(); if (parentToken.value) { markAdmin(); await loadAdmin().catch(() => {}); view.value = "admin"; } await loadWrong();
+});
 </script>
 
 <template>
@@ -142,9 +272,30 @@ onMounted(async () => { await loadAuth(); await load(); if (parentToken.value) {
     <section v-else-if="!students.length" class="welcome card"><div class="welcome-art"><div class="planet">学</div><span class="orbit orbit-a"></span><span class="orbit orbit-b"></span></div><div class="welcome-copy"><p class="eyebrow orange">家长先登录，开启学习旅程</p><h2>先管理家庭成员<br />再让孩子开始学习</h2><p>家长登录后，可以创建孩子账号、安排每日任务、设置奖励，并查看学习成长记录。</p><button class="cta" @click="enterAdmin()">家长认证进入 <span>→</span></button></div><div class="feature-strip"><span>✦ 安全的家庭空间</span><span>✦ 趣味化闯关学习</span><span>✦ 可追踪成长记录</span></div></section>
     <section v-else-if="view === 'home'" class="home">
       <div v-if="!hasStudent" class="empty-state card"><div class="empty-icon">👨‍👩‍👧‍👦</div><p class="eyebrow orange">第一步 · 创建学习账号</p><h2>还没有学生账号</h2><p>请先在家长中心添加孩子，完成后这里就会出现专属学习工作台。</p><button class="cta" @click="enterAdmin('students')">去添加学生 <span>→</span></button></div>
-      <template v-else><section class="dashboard-hero"><div><p class="eyebrow orange">{{ activeStudent?.name }}的学习星球</p><h2>今天想去哪里探索？</h2><p>每一次练习，都会变成成长路上的一颗星。</p></div><div class="hero-badge">{{ activeStudent?.avatar || '🐣' }}<small>Lv.{{ activeStudent?.level || 1 }}</small></div></section><div class="student-switcher"><span class="section-label">当前学习者</span><button v-for="s in students" :key="s.id" class="student" :class="{ active: s.id === currentStudent }" @click="switchStudent(s.id)"><span>{{ s.avatar || '🐣' }}</span>{{ s.name }}<b v-if="s.id === currentStudent">✓</b></button><button v-if="canAdmin" class="add-child" @click="enterAdmin('students')">＋ 添加孩子</button></div><section class="path card"><div class="section-heading"><div><p class="eyebrow">LEARNING MAP</p><h2>学习探索地图</h2></div><span class="map-progress">{{ totalStars() }} 颗星星</span></div><div class="units"><button v-for="u in units" :key="u.kind" class="unit" :class="u.className" @click="startUnit(u)"><span class="unit-icon">{{ u.icon }}</span><span class="stars">{{ '★'.repeat(starCount(u)) }}<i>{{ '☆'.repeat(3 - starCount(u)) }}</i></span><strong>{{ u.title }}</strong><small>{{ u.sub }}</small><em>开始探索 <b>→</b></em></button></div></section><div class="quick-grid"><button @click="openMyTasks"><span class="quick-icon">✓</span><span><b>我的任务</b><small>完成任务赢积分</small></span><i>→</i></button><button @click="openMyRewards"><span class="quick-icon gift">◆</span><span><b>奖励商店</b><small>用积分兑换奖励</small></span><i>→</i></button><button @click="showLeaderboard"><span class="quick-icon rank">♛</span><span><b>本周排行榜</b><small>比一比谁的经验多</small></span><i>→</i></button></div><section v-if="wrongCount" class="wrong-card card" @click="startUnit({ kind: wrongSubject(), title: '错题巩固' })"><div class="wrong-icon">📕</div><div class="wrong-copy"><b>错题本有 {{ wrongCount }} 道题待巩固</b><small>练习时会自动穿插错题，答对即可消除</small></div><i>→</i></section><section class="growth card"><div class="pet-zone"><div class="bubble">准备好闯关了吗？</div><div class="pet">🌟</div></div><div class="stats"><div><b>{{ points }}</b><span>我的积分</span></div><div><b>{{ maxCombo() }}</b><span>最高连击</span></div><div><b>{{ totalStars() }}</b><span>收集星星</span></div></div></section></template>
+      <template v-else><section class="dashboard-hero"><div><p class="eyebrow orange">{{ activeStudent?.name }}的学习星球</p><h2>今天想去哪里探索？</h2><p>每一次练习，都会变成成长路上的一颗星。</p></div><div class="hero-badge">{{ activeStudent?.avatar || '🐣' }}<small>Lv.{{ activeStudent?.level || 1 }}</small></div></section><div class="student-switcher"><span class="section-label">当前学习者</span><button v-for="s in students" :key="s.id" class="student" :class="{ active: s.id === currentStudent }" @click="switchStudent(s.id)"><span>{{ s.avatar || '🐣' }}</span>{{ s.name }}<b v-if="s.id === currentStudent">✓</b></button><button v-if="canAdmin" class="add-child" @click="enterAdmin('students')">＋ 添加孩子</button></div><section class="path card"><div class="section-heading"><div><p class="eyebrow">LEARNING MAP</p><h2>学习探索地图</h2></div><span class="map-progress">{{ totalStars() }} 颗星星</span></div><div class="units"><button v-for="u in units" :key="u.kind" class="unit" :class="u.className" @click="startUnit(u)"><span class="unit-icon">{{ u.icon }}</span><span class="stars">{{ '★'.repeat(starCount(u)) }}<i>{{ '☆'.repeat(3 - starCount(u)) }}</i></span><strong>{{ u.title }}</strong><small>{{ u.sub }}</small><em>开始探索 <b>→</b></em></button></div></section><div class="quick-grid"><button @click="openBattleHome"><span class="quick-icon rank">⚔️</span><span><b>真人对战</b><small>5题抢答 · 冲击王者段位</small></span><i>→</i></button><button @click="openMyTasks"><span class="quick-icon">✓</span><span><b>我的任务</b><small>完成任务赢积分</small></span><i>→</i></button><button @click="openMyRewards"><span class="quick-icon gift">◆</span><span><b>奖励商店</b><small>用积分兑换奖励</small></span><i>→</i></button><button @click="openPet"><span class="quick-icon pet-icon">🐣</span><span><b>我的宠物</b><small>投喂零食养好感度</small></span><i>→</i></button><button @click="showLeaderboard"><span class="quick-icon rank2">♛</span><span><b>本周排行榜</b><small>比一比谁的经验多</small></span><i>→</i></button></div><section v-if="wrongCount" class="wrong-card card" @click="startUnit({ kind: wrongSubject(), title: '错题巩固' })"><div class="wrong-icon">📕</div><div class="wrong-copy"><b>错题本有 {{ wrongCount }} 道题待巩固</b><small>练习时会自动穿插错题，答对即可消除</small></div><i>→</i></section><section class="growth card"><div class="pet-zone"><div class="bubble">准备好闯关了吗？</div><div class="pet">🌟</div></div><div class="stats"><div><b>{{ points }}</b><span>我的积分</span></div><div><b>{{ maxCombo() }}</b><span>最高连击</span></div><div><b>{{ totalStars() }}</b><span>收集星星</span></div></div></section></template>
     </section>
-    <section v-else-if="view === 'lesson'" class="lesson"><div class="lesson-top"><button class="close" @click="view='home'">×</button><div class="progress"><i :style="{ width: `${progress}%` }" /></div><b v-if="combo >= 2">连击 x{{ combo }}</b></div><article v-if="activeQuestion" class="card question" :class="{ 'review-q': activeQuestion.review }"><p class="eyebrow orange">{{ activeQuestion.subject === 'english' ? '英语挑战' : activeQuestion.subject === 'chinese' ? '语文挑战' : activeQuestion.subject === 'math' ? '数学挑战' : activeQuestion.subject === 'physics' ? '物理挑战' : activeQuestion.subject === 'chemistry' ? '化学挑战' : activeQuestion.subject === 'biology' ? '生物挑战' : activeQuestion.subject === 'history' ? '历史挑战' : '地理挑战' }} <span v-if="activeQuestion.review" class="review-tag">错题巩固</span></p><h2>{{ activeQuestion.title }}</h2><p v-if="activeQuestion.passage" class="passage">{{ activeQuestion.passage }}</p><em>{{ activeQuestion.subtitle }}</em><div class="options"><button v-for="o in activeQuestion.options" :key="o" :disabled="activeQuestion.picked !== undefined" :class="{ right: activeQuestion.picked !== undefined && o === activeQuestion.rightAnswer, wrong: activeQuestion.picked === o && !activeQuestion.correct }" @click="selectOption(o)">{{ o }}</button></div><button v-if="activeQuestion.picked !== undefined" class="cta continue" @click="nextQuestion">{{ questionIndex + 1 < questions.length ? '继续下一题 →' : '完成关卡 ✓' }}</button></article><div v-if="fx" class="fx-layer"><template v-if="fx==='right'"><span class="fx-pop">+{{ activeQuestion?.xp || 0 }} XP</span></template><template v-else-if="fx==='combo'"><span class="fx-combo">🔥 连击 x{{ combo }}！<small>+{{ activeQuestion?.xp || 0 }} XP</small></span></template><template v-else-if="fx==='wrong'"><span class="fx-wrong">💪 再想想，已加入错题本</span></template><template v-else-if="fx==='star'"><span class="fx-stars">★★★</span></template></div></section>
+    <section v-else-if="view === 'lesson'" class="lesson"><div class="lesson-top"><button class="close" @click="view='home'">×</button><div class="progress"><i :style="{ width: `${progress}%` }" /></div><b v-if="combo >= 2">连击 x{{ combo }}</b></div><article v-if="activeQuestion" class="card question" :class="{ 'review-q': activeQuestion.review }"><p class="eyebrow orange">{{ activeQuestion.subject === 'english' ? '英语挑战' : activeQuestion.subject === 'chinese' ? '语文挑战' : activeQuestion.subject === 'math' ? '数学挑战' : activeQuestion.subject === 'physics' ? '物理挑战' : activeQuestion.subject === 'chemistry' ? '化学挑战' : activeQuestion.subject === 'biology' ? '生物挑战' : activeQuestion.subject === 'history' ? '历史挑战' : '地理挑战' }} <span v-if="activeQuestion.review" class="review-tag">错题巩固</span></p><h2>{{ activeQuestion.title }}</h2><p v-if="activeQuestion.passage" class="passage">{{ activeQuestion.passage }}</p><em>{{ activeQuestion.subtitle }}</em><div class="options"><button v-for="o in activeQuestion.options" :key="o" :disabled="activeQuestion.picked !== undefined" :class="{ right: activeQuestion.picked !== undefined && o === activeQuestion.rightAnswer, wrong: activeQuestion.picked === o && !activeQuestion.correct, kbdSel: activeQuestion.fillSel !== undefined && o === activeQuestion.options[activeQuestion.fillSel] }" @click="selectOption(o)">{{ o }}<i class="kbd-num">{{ activeQuestion.options.indexOf(o) + 1 }}</i></button></div><div v-if="activeQuestion.fillOpen && activeQuestion.picked === undefined" class="fill-box"><input ref="fillInputEl" v-model="activeQuestion.fillInput" class="fill-input" :placeholder="activeQuestion.fillHint || '输入答案，回车提交'" @keydown.enter.prevent="submitFill(activeQuestion.fillInput)" /><button class="fill-go" @click="submitFill(activeQuestion.fillInput)">提交 ⏎</button></div><div v-if="activeQuestion.picked !== undefined && activeQuestion.fillOpen" class="fill-verdict" :class="{ ok: activeQuestion.correct, no: !activeQuestion.correct }">{{ activeQuestion.correct ? '✓ 答对了' : `✗ 正确答案：${activeQuestion.rightAnswer}` }}</div><p class="kbd-hint">⌨️ 数字键选择 · <b>回车键</b> 确认 / 下一题</p><button v-if="activeQuestion.picked !== undefined" class="cta continue" @click="nextQuestion">{{ questionIndex + 1 < questions.length ? '继续下一题 →' : '完成关卡 ✓' }}</button></article><div v-if="fx" class="fx-layer"><template v-if="fx==='right'"><span class="fx-pop">+{{ activeQuestion?.xp || 0 }} XP</span></template><template v-else-if="fx==='combo'"><span class="fx-combo">🔥 连击 x{{ combo }}！<small>+{{ activeQuestion?.xp || 0 }} XP</small></span></template><template v-else-if="fx==='wrong'"><span class="fx-wrong">💪 再想想，已加入错题本</span></template><template v-else-if="fx==='star'"><span class="fx-stars">★★★</span></template></div></section>
+    <!-- 真人对战：匹配 -->
+    <section v-else-if="view === 'battle'" class="battle">
+      <div v-if="battlePhase === 'matching'" class="card battle-match"><div class="vs-orbit"><span class="vs-me">{{ activeStudent?.avatar || '🐣' }}</span><span class="vs-dot"></span><span class="vs-q">?</span></div><h2>正在匹配对手…</h2><p class="muted">真人玩家 · 数学 · {{ gradeLabel(activeStudent?.grade) }}<br />3 秒内没找到会安排机器人陪练</p><div class="match-pulse"><i></i><i></i><i></i></div><button class="quit-link" @click="exitBattle">取消匹配</button></div>
+      <!-- 对战中 -->
+      <template v-else-if="battlePhase === 'fighting'"><div class="battle-hud card"><div class="hud-side me"><span class="hud-avatar">{{ activeStudent?.avatar || '🐣' }}</span><b>{{ battleMe.total }}</b><small>{{ activeStudent?.name }}</small></div><div class="hud-mid"><span class="hud-qnum">{{ battleIdx + 1 }}/{{ battleQs.length }}</span><div class="hud-timer" :class="{ danger: battleRemain <= 3 }"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" class="timer-bg"/><circle cx="40" cy="40" r="34" class="timer-fg" :style="{ strokeDashoffset: 214 - 214 * battleRemain / 10 }"/></svg><b>{{ battleRemain }}</b></div></div><div class="hud-side opp"><span class="hud-avatar">{{ battleOpp.avatar || '🤖' }}</span><b>{{ battleOpp.total }}</b><small>{{ battleOpp.name }}{{ battleOpp.isBot ? ' 🤖' : '' }}</small></div></div><article v-if="battleQs[battleIdx]" class="card question battle-q"><p class="eyebrow orange">{{ battleQs[battleIdx].topic || '抢答' }} · {{ { choice: '选择题', fill: '填空题' }[battleQs[battleIdx].qtype] || '抢答' }}</p><h2>{{ battleQs[battleIdx].question }}</h2><div v-if="battleQs[battleIdx].options?.length" class="options battle-options"><button v-for="o in battleQs[battleIdx].options" :key="o" :disabled="battlePicked !== undefined" :class="{ picked: battlePicked !== undefined && battleQs[battleIdx].options[battlePicked] === undefined }" @click="battleAnswer(o)">{{ o }}<i class="kbd-num">{{ battleQs[battleIdx].options.indexOf(o) + 1 }}</i></button></div><div v-else class="fill-box"><input v-model="battleFillInput" class="fill-input" placeholder="输入答案，回车抢答" @keydown.enter.prevent="battleAnswer(battleFillInput); battleFillInput=''" /><button class="fill-go" @click="battleAnswer(battleFillInput); battleFillInput=''">抢答 ⏎</button></div><div v-if="battlePicked !== undefined" class="battle-verdict" :class="battleCorrect ? 'ok' : 'no'">{{ battleCorrect ? `⚡ +${battleGain} 分！手速惊人` : '✗ 这题没拿到分' }}<small>当前 {{ battleMe.total }} : {{ battleOpp.total }}</small></div></article></template>
+      <!-- 结算画面 -->
+      <div v-else-if="battlePhase === 'finished' && battleResult" class="modal" style="position:static;display:grid;place-items:center"><section class="card battle-result" :class="battleResult.result"><template v-if="battleResult.result === 'win'"><div class="result-crown">👑</div><h2>胜利！</h2></template><template v-else-if="battleResult.result === 'lose'"><div class="result-crown">💪</div><h2>惜败</h2></template><template v-else><div class="result-crown">🤝</div><h2>平局</h2></template><div class="battle-score"><span>{{ battleResult.my_score }}</span><i>:</i><span>{{ battleResult.opp_score }}</span></div><div class="battle-trophies"><b>{{ battleResult.trophies }}</b><span>奖杯</span><em>{{ battleResult.tier_emoji }} {{ battleResult.tier }}</em></div><ul class="battle-rewards"><li v-for="(r, i) in battleResult.rewards || []" :key="i">{{ r }}</li></ul><div class="battle-exp">✨ 经验 +{{ battleResult.exp }}</div><button class="cta" @click="exitBattle(); openBattleHome()">查看段位榜</button><button class="quit-link" @click="exitBattle(); view='home'">返回主页</button></section></div>
+    </section>
+    <!-- 段位主页 -->
+    <section v-else-if="view === 'battle-home'" class="battle-home">
+      <div class="lesson-top"><button class="close" @click="view='home'">×</button><div><p class="eyebrow orange">BATTLE ARENA</p><h2 class="page-title">对战竞技场</h2></div></div>
+      <section class="card arena-hero"><div class="arena-trophy">🏆</div><div><h2>{{ battleRank?.my ? `${battleRank.my.tier_emoji} ${battleRank.my.tier}` : '🥉 青铜' }}</h2><p><b>{{ battleRank?.my?.trophies ?? 0 }}</b> 奖杯 · {{ battleRank?.my?.wins || 0 }} 胜 {{ battleRank?.my?.battles || 0 }} 战</p></div><button class="cta" @click="view='battle'; startBattle()">开始匹配对战</button></section>
+      <section class="card rank-board"><h3>段位排行榜</h3><ol class="board-list"><li v-for="(e, i) in battleRank?.entries || []" :key="e.child_id" :class="{ me: e.child_id === currentStudent, top3: i < 3 }"><span class="board-rank">{{ ['🥇','🥈','🥉'][i] || e.rank }}</span><span class="board-avatar">{{ e.avatar || '🐣' }}</span><span class="board-name">{{ e.name }}<small>{{ e.tier_emoji }} {{ e.tier }}</small></span><b class="board-trophy">🏆 {{ e.trophies }}</b></li><li v-if="!(battleRank?.entries || []).length" class="board-empty">还没有人上榜，来当第一个王者！</li></ol></section>
+      <section class="card history-box"><div class="history-head"><h3>我的战绩</h3><button class="history-toggle" @click="openBattleHistory">{{ battleHistory.length ? '刷新' : '加载' }}</button></div><div v-for="h in battleHistory" :key="h.id" class="history-row" :class="h.result"><span class="history-badge">{{ { win: '胜', lose: '负', draw: '平' }[h.result] }}</span><span class="board-avatar">{{ h.opponent_avatar || '🤖' }}</span><span class="history-opp">{{ h.opponent }}<small>{{ h.created_at?.slice(5, 16) }}</small></span><b class="history-score">{{ h.my_score }} : {{ h.opp_score }}</b><span class="history-trophy" :class="h.result">{{ h.trophies > 0 ? '+' : '' }}{{ h.trophies }}🏆</span></div><p v-if="!battleHistory.length" class="muted" style="text-align:center">还没有对战记录，来一场吧！</p></section>
+    </section>
+    <!-- 宠物页 -->
+    <section v-else-if="view === 'pet'" class="pet-page">
+      <div class="lesson-top"><button class="close" @click="view='home'">×</button><div><p class="eyebrow orange">MY PET</p><h2 class="page-title">我的宠物</h2></div></div>
+      <section v-if="pet" class="card pet-card" :class="`mood-${pet.mood}`"><div class="pet-stage"><div class="pet-bubble">{{ petMsg || (pet.mood === 'hungry' ? '咕噜咕噜…肚子饿了~' : pet.mood === 'sad' ? '好久没陪我玩了…' : '和我一起学习吧！') }}</div><div class="pet-avatar" :class="{ hop: petMsg }">{{ pet.emoji || '🐣' }}</div><button class="pet-rename" @click="showPetRename=true; petNewName=pet.name">✏️</button></div><div class="pet-name-row"><b>{{ pet.name }}</b><span>{{ pet.species_name }}</span><em>{{ moodEmoji(pet) }} {{ pet.mood_text }}</em></div><div class="pet-bars"><div class="pet-bar"><label>饱食度</label><div class="bar"><i :style="{ width: `${pet.hunger}%` }" class="bar-hunger"/></div><b>{{ pet.hunger }}%</b></div><div class="pet-bar"><label>好感度</label><div class="bar"><i :style="{ width: `${pet.affection}%` }" class="bar-aff"/></div><b>{{ pet.affection }}%</b></div><div class="pet-bar"><label>Lv.{{ pet.level }}</label><div class="bar"><i :style="{ width: `${Math.round(pet.exp / pet.exp_max * 100)}%` }" class="bar-exp"/></div><b>{{ pet.exp }}/{{ pet.exp_max }}</b></div></div></section>
+      <section v-if="pet" class="card food-box"><h3>🍖 投喂零食</h3><p class="muted">不同食物增加的饱食度/好感度/经验不同，饱食度会随时间下降，记得常回来喂它！</p><div class="food-grid"><button v-for="f in petFoods" :key="f.id" class="food" :disabled="petFeeding" @click="feedPet(f)"><span class="food-emoji">{{ f.emoji }}</span><b>{{ f.name }}</b><small>🍚 +{{ f.hunger }} 💗 +{{ f.affection }} ✨ +{{ f.exp }}</small></button></div></section>
+    </section>
     <section v-else class="admin card"><nav class="admin-nav"><button :class="{active:adminTab==='overview'}" @click="adminTab='overview'">总览</button><button :class="{active:adminTab==='students'}" @click="adminTab='students'">孩子管理</button><button :class="{active:adminTab==='tasks'}" @click="adminTab='tasks'">学习任务</button><button :class="{active:adminTab==='rewards'}" @click="adminTab='rewards'">奖励商店</button><button :class="{active:adminTab==='logs'}" @click="adminTab='logs'">成长记录</button><button :class="{active:adminTab==='settings'}" @click="adminTab='settings'">账户设置</button></nav><div class="admin-head"><div><p class="eyebrow orange">PARENT SPACE</p><h2>家长管理中心</h2></div><div><button class="back-link" @click="backToStudent">返回学习工作台</button><button class="danger-link" @click="logout">退出登录</button></div></div><div v-if="adminTab==='overview'" class="panel"><p class="muted">管理孩子的学习任务、奖励和成长记录。</p><div class="overview-grid"><div><b>{{ students.length }}</b><span>孩子账号</span></div><div><b>{{ tasks.filter(t=>t.status!=='done').length }}</b><span>待完成任务</span></div><div><b>{{ rewards.length }}</b><span>奖励项目</span></div><div><b>{{ points }}</b><span>当前积分</span></div></div><div class="admin-tip">💡 先添加孩子，再从学习工作台切换学习者；每个孩子的学习进度和积分独立保存。</div></div><div v-if="adminTab==='students'" class="panel"><h3>孩子账号</h3><p class="muted">创建后，孩子才能进入专属学习工作台。</p><button class="primary add-student-btn" @click="openAddStudent">＋ 添加孩子账号</button><div class="list"><div v-for="s in students" :key="s.id" class="list-row"><span class="avatar">{{ s.avatar || '🐣' }}</span><strong>{{ s.name }}</strong><small>{{ s.grade || 5 }}年级 · {{ s.username || '未设置用户名' }}</small><button class="select-link" @click="switchStudent(s.id)">{{ s.id === currentStudent ? '当前学习者' : '切换' }}</button><button class="danger-link" @click="deleteStudent(s.id)">删除</button></div><div v-if="!students.length" class="empty">还没有孩子账号，请先创建一个。</div></div></div><div v-if="adminTab==='tasks'" class="panel"><h3>学习任务</h3><div class="form-row"><input v-model="newTask.title" placeholder="任务名称，如：朗读课文" /><input v-model="newTask.due_date" type="date" /><input v-model.number="newTask.points" type="number" placeholder="奖励积分" /><button class="primary" @click="addTask">发布任务</button></div><div class="list"><div v-for="t in tasks" :key="t.id" class="list-row"><span class="task-check">✓</span><strong>{{ t.title }}</strong><small>+{{ t.points }} 积分 · {{ t.due_date || '今天' }}</small><button class="danger-link" @click="deleteTask(t.id)">删除</button></div><div v-if="!tasks.length" class="empty">还没有任务安排。</div></div></div><div v-if="adminTab==='rewards'" class="panel"><h3>奖励商店</h3><div class="form-row"><input v-model="newReward.name" placeholder="奖励名称，如：看一集动画片" /><input v-model.number="newReward.cost_points" type="number" placeholder="所需积分" /><button class="primary" @click="addReward">添加奖励</button></div><div class="reward-grid"><div v-for="r in rewards" :key="r.id" class="reward"><span class="reward-icon">◆</span><strong>{{ r.name }}</strong><b>{{ r.cost_points }} 积分</b></div><div v-if="!rewards.length" class="empty">还没有奖励项目。</div></div></div><div v-if="adminTab==='logs'" class="panel"><h3>成长记录</h3><div class="list"><div v-for="l in logs" :key="l.id" class="list-row"><span :class="l.delta > 0 ? 'gain' : 'loss'">{{ l.delta > 0 ? '+' : '' }}{{ l.delta }}</span><strong>{{ l.reason }}</strong><small>{{ l.created_at }}</small></div><div v-if="!logs.length" class="empty">完成学习后，这里会留下成长记录。</div></div></div><div v-if="adminTab==='settings'" class="panel"><h3>账户设置</h3><p class="muted">修改家长 PIN，保护家庭学习数据。</p><div class="form-row"><input v-model="newPin" type="password" placeholder="输入新的家长 PIN" /><button class="primary" @click="savePin">保存 PIN</button></div></div></section>
     <nav v-if="inAdmin && view !== 'lesson'" class="bottom-menu" aria-label="主菜单"><button :class="{ active: view === 'home' }" @click="view = 'home'"><span class="menu-icon">⌂</span><span>学习</span></button><button :class="{ active: view === 'admin' && adminTab === 'tasks' }" @click="enterAdmin('tasks')"><span class="menu-icon">✓</span><span>任务</span></button><button :class="{ active: view === 'admin' && adminTab === 'rewards' }" @click="enterAdmin('rewards')"><span class="menu-icon">★</span><span>奖励</span></button><button :class="{ active: view === 'admin' && ['overview', 'students', 'logs', 'settings'].includes(adminTab) }" @click="enterAdmin('overview')"><span class="menu-icon">♙</span><span>家长</span></button></nav>
     <div v-if="result" class="modal"><section class="result card"><div class="result-star">★</div><p class="eyebrow orange">MISSION COMPLETE</p><h2>闯关完成！</h2><p>答对 {{ result.correct }}/{{ result.total }} 题 · 最高连击 x{{ result.max_combo }}</p><div class="result-stars">{{ '★'.repeat(result.stars || 0) }}<i>{{ '☆'.repeat(3 - (result.stars || 0)) }}</i></div><div v-if="result.xp_gained" class="result-xp">✨ 经验值 +{{ result.xp_gained }}</div><button class="cta" @click="backHome">回到学习地图</button></section></div>

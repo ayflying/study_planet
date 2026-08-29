@@ -192,7 +192,9 @@ function battleMsg(m) {
     battleIdx.value = m.qindex; battleRemain.value = m.remain || 10; battlePicked.value = undefined; battleCorrect.value = false; battleGain.value = 0;
     battlePhase.value = "fighting";
   } else if (m.type === "tick") {
-    if (m.qindex === battleIdx.value) battleRemain.value = m.remain;
+    if (m.qindex === battleIdx.value && m.remain !== undefined) battleRemain.value = m.remain;
+    if (m.opp_total !== undefined) battleOpp.value = { ...battleOpp.value, total: m.opp_total };
+  } else if (m.type === "opp_done") {
     if (m.opp_total !== undefined) battleOpp.value = { ...battleOpp.value, total: m.opp_total };
   } else if (m.type === "answer_result") {
     battlePicked.value = m.qindex; battleCorrect.value = m.correct; battleGain.value = m.score || 0;

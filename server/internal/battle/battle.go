@@ -120,7 +120,7 @@ type room struct {
 	Grade    int
 	p1, p2   *player
 	qs       []*battleQuestion // 题目（含答案，服务端持有）
-	qIndex   int
+	qIndex   int               // 当前题下标（nextQuestion 前移，起始 -1 表示尚未开题）
 	qDeadli  time.Time
 	timerOn  bool
 	finished bool
@@ -287,6 +287,7 @@ func (e *Engine) startRoom(p1, p2 *player, subject string, grade int, botRoom bo
 		Grade:   grade,
 		p1:      p1,
 		p2:      p2,
+		qIndex:  -1, // nextQuestion 首次调用前移到 0
 	}
 	qs, err := pickBattleQuestions(subject, grade, questionCount)
 	if err != nil || len(qs) == 0 {
@@ -358,7 +359,12 @@ func pickBattleQuestions(subject string, grade, limit int) ([]*battleQuestion, e
 // nextQuestion 推进到下一题并开始 10 秒计时。
 func (e *Engine) nextQuestion(rm *room) {
 	rm.mu.Lock()
-	if rm.finished || rm.qIndex >= len(rm.qs) {
+	if rm.finished {
+		rm.mu.Unlock()
+		return
+	}
+	rm.qIndex++ // 前移到下一题（首题从 -1 → 0）
+	if rm.qIndex >= len(rm.qs) {
 		rm.mu.Unlock()
 		e.finishRoom(rm)
 		return
@@ -521,12 +527,12 @@ func (e *Engine) scheduleBot(rm *room, bot *player, idx int) {
 		bothDone := rm.p1.answers[idx] && rm.p2.answers[idx]
 		rm.mu.Unlock()
 
-		// 给真人对手播报机器人完成状态（opp_total 更新）
+		// 给真人对手播报机器人完成状态（只更新 opp_total，不携带 Remain 避免干扰倒计时）
 		human := rm.p1
 		if rm.p1.isBot {
 			human = rm.p2
 		}
-		e.send(human, srvMsg{Type: "tick", QIndex: idx, Remain: 0, OppTotal: bot.total})
+		e.send(human, srvMsg{Type: "opp_done", QIndex: idx, OppTotal: bot.total})
 		if bothDone {
 			rm.mu.Lock()
 			rm.timerOn = false

@@ -16,8 +16,9 @@ type Task struct {
 
 // ListTasksReq 学生任务列表（按 student_id，公开接口）。
 type ListTasksReq struct {
-	g.Meta `path:"/tasks" method:"get" tags:"Task" summary:"任务列表"`
-	Status string `json:"status" in:"query"`
+	g.Meta    `path:"/tasks" method:"get" tags:"Task" summary:"任务列表"`
+	StudentID int    `json:"student_id" in:"query"`
+	Status    string `json:"status" in:"query"`
 }
 type ListTasksRes []Task
 
@@ -45,8 +46,9 @@ type DeleteTaskRes struct {
 
 // CompleteTaskReq 完成任务（学生操作，公开接口）。
 type CompleteTaskReq struct {
-	g.Meta `path:"/tasks/:id/complete" method:"post" tags:"Task" summary:"完成任务"`
-	ID     int `in:"path" json:"-"`
+	g.Meta    `path:"/tasks/:id/complete" method:"post" tags:"Task" summary:"完成任务"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type CompleteTaskRes struct {
 	OK      bool `json:"ok"`

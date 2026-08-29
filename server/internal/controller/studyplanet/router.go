@@ -17,7 +17,7 @@ import (
 func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 	ctrl := NewV1()
 	server.Group("/api", func(group *ghttp.RouterGroup) {
-		group.Middleware(middleware.CORS)
+		group.Middleware(middleware.CORS, middleware.HandlerResponse)
 
 		// ---- 公开：系统与学生端 ----
 		group.Bind(

@@ -1,109 +1,132 @@
 package studyplanet
 
 import (
+	"context"
 	"fmt"
-	"strconv"
-	"time"
+	"strings"
 
-	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gtime"
 
-	"studyplanet/internal/contentlib"
-	"studyplanet/internal/model"
+	v1 "studyplanet/api/studyplanet/v1"
 )
 
 // ---------- 多邻国式练习场次：星级 + 连击 + XP ----------
 
-// 连击奖分规则（多邻国式）：连击每达到 3/5/8 阶梯，给一次额外分。
+// 连击奖分规则（多邻国式）：连击每达到 3/5/8/10 阶梯，给一次额外分。
 var comboBonus = map[int]int{3: 2, 5: 4, 8: 6, 10: 8}
 
-// CreateSession 开启一关：POST /api/sessions {subject, level, total, student_id}
-func (s *sStudyPlanet) CreateSession(r *ghttp.Request) {
-	cid := s.resolveChild(r)
-	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
-	}
-	var body struct {
-		Subject string `json:"subject"`
-		Level   int    `json:"level"`
-		Total   int    `json:"total"`
-	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
-	}
-	// 动态内容库后学科是开放集合（english/chinese/math/physics...），不能再限 words/reading/math。
-	// 校验：非空 + 长度合法 + 必须是内容库中已启用学科（或兼容旧值 words/reading）。
-	if body.Subject == "" || len(body.Subject) > 32 {
-		s.fail(r, 400, "subject 不能为空")
-		return
-	}
-	if body.Subject != "words" && body.Subject != "reading" {
-		valid, err := contentlib.SubjectExists(s.DB, body.Subject)
-		if err != nil {
-			s.fail(r, 500, err.Error())
-			return
-		}
-		if !valid {
-			s.fail(r, 400, "subject 需为已启用的学科 code（如 english/chinese/math）")
-			return
-		}
-	}
-	if body.Level <= 0 {
-		body.Level = 1
-	}
-	if body.Total <= 0 || body.Total > 50 {
-		body.Total = 5
-	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	res, err := s.DB.Exec(
-		"INSERT INTO practice_sessions(child_id,subject,level,total,created_at) VALUES(?,?,?,?,?)",
-		cid, body.Subject, body.Level, body.Total, now,
-	)
-	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	id64, _ := res.LastInsertId()
-	var ps model.PracticeSession
-	if err := s.DB.Get(&ps, "SELECT id,child_id,subject,level,total,correct,max_combo,bonus,stars,finished,created_at FROM practice_sessions WHERE id=?", id64); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, ps)
+// answerOutcome 单题作答后的实时反馈（场次模式）。
+type answerOutcome struct {
+	Correct    bool   // 本题是否正确
+	Combo      int    // 当前连击
+	BasePoints int    // 本题基础得分（含连击加成）
+	ComboBonus int    // 本次触发的连击阶梯奖分
+	Answer     string // 正确答案（答错时反馈）
+	Review     bool   // 本题是否为错题巩固题
+	XP         int    // 本次作答获得的经验值
 }
 
-// answerOutcome 单题作答后的实时反馈。
-type answerOutcome struct {
-	Correct    bool   `json:"correct"`
-	Combo      int    `json:"combo"`            // 当前连击
-	BasePoints int    `json:"base_points"`      // 本题基础得分（含连击加成）
-	ComboBonus int    `json:"combo_bonus"`      // 本次触发的连击阶梯奖分
-	Answer     string `json:"answer,omitempty"` // 正确答案（答错时反馈）
-	Review     bool   `json:"review"`           // 本题是否为错题巩固题
-	XP         int    `json:"xp"`               // 本次作答获得的经验值
+// fillOutcome 把作答反馈写入接口响应字段（correct 可为 nil）。
+func fillOutcome(combo, basePoints, comboBonusGot, review *int, xp *int, correct *bool, out *answerOutcome) {
+	if out == nil {
+		return
+	}
+	if combo != nil {
+		*combo = out.Combo
+	}
+	if basePoints != nil {
+		*basePoints = out.BasePoints
+	}
+	if comboBonusGot != nil {
+		*comboBonusGot = out.ComboBonus
+	}
+	if review != nil {
+		if out.Review {
+			*review = 1
+		} else {
+			*review = 0
+		}
+	}
+	if xp != nil {
+		*xp = out.XP
+	}
+	if correct != nil {
+		*correct = out.Correct
+	}
+}
+
+// CreateSession 开启一关（多邻国式关卡）。
+func (s *sStudyPlanet) CreateSession(ctx context.Context, req *v1.CreateSessionReq) (res *v1.CreateSessionRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
+	if cid < 0 {
+		return nil, errNotFound("学生不存在")
+	}
+	// 动态内容库后学科是开放集合（english/chinese/math/physics...），不能再限 words/reading/math。
+	// 校验：非空 + 长度合法 + 必须是内容库中已启用学科（兼容旧值 words/reading）。
+	if req.Subject == "" || len(req.Subject) > 32 {
+		return nil, errParam("subject 不能为空")
+	}
+	if req.Subject != "words" && req.Subject != "reading" {
+		cnt, err := daoSubjects.Ctx(ctx).Where("code", req.Subject).Where("enabled", 1).Count()
+		if err != nil {
+			return nil, gerror.Wrap(err, "校验学科失败")
+		}
+		if cnt == 0 {
+			return nil, errParam("subject 需为已启用的学科 code（如 english/chinese/math）")
+		}
+	}
+	level, total := req.Level, req.Total
+	if level <= 0 {
+		level = 1
+	}
+	if total <= 0 || total > 50 {
+		total = 5
+	}
+	id, err := daoSessions.Ctx(ctx).Data(doSessions{
+		ChildId:   cid,
+		Subject:   req.Subject,
+		Level:     level,
+		Total:     total,
+		CreatedAt: gtime.Now(),
+	}).InsertAndGetId()
+	if err != nil {
+		return nil, gerror.Wrap(err, "创建练习场次失败")
+	}
+	rec, err := daoSessions.Ctx(ctx).Where("id", id).One()
+	if err != nil || rec.IsEmpty() {
+		return nil, gerror.New("查询练习场次失败")
+	}
+	ps := v1.CreateSessionRes(sessionOf(rec))
+	return &ps, nil
 }
 
 // recordAnswer 场次内记一笔作答并处理积分与连击；session 必须属于该学生且未结束。
 // reviewRefs 标记哪些 ref_id 来自错题本（答对则消除错题）；可为 nil。
-func (s *sStudyPlanet) recordAnswer(r *ghttp.Request, sessionID int, refID int, correct bool, basePoints int, answer string, reviewRefs map[int]bool) *answerOutcome {
-	cid := s.resolveChild(r)
-	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return nil
+func (s *sStudyPlanet) recordAnswer(ctx context.Context, childID, sessionID, refID int, correct bool, basePoints int, answer string, reviewRefs map[int]bool) (*answerOutcome, error) {
+	if childID < 0 {
+		return nil, errNotFound("学生不存在")
 	}
-	var ps model.PracticeSession
-	if err := s.DB.Get(&ps, "SELECT id,child_id,subject,level,total,correct,max_combo,bonus,stars,finished FROM practice_sessions WHERE id=?", sessionID); err != nil {
-		s.fail(r, 404, "未找到该练习")
-		return nil
+	ps, err := daoSessions.Ctx(ctx).Where("id", sessionID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询练习场次失败")
 	}
-	if ps.ChildID != cid || ps.Finished == 1 {
-		s.fail(r, 400, "该练习不可作答")
-		return nil
+	if ps.IsEmpty() {
+		return nil, errNotFound("未找到该练习")
+	}
+	if ps["child_id"].Int() != childID || ps["finished"].Int() == 1 {
+		return nil, errAuth("该练习不可作答")
 	}
 
 	// 当前连击 = 最近一次答错之后的连续正确数
-	streak := s.streakOf(sessionID)
+	streak, err := s.streakOf(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
 
 	combo := streak
 	comboBonusGot := 0
@@ -117,123 +140,132 @@ func (s *sStudyPlanet) recordAnswer(r *ghttp.Request, sessionID int, refID int, 
 		}
 	}
 
-	now := time.Now().Format("2006-01-02 15:04:05")
 	review := isReviewRef(reviewRefs, refID)
-	if _, err := s.DB.Exec(
-		"INSERT INTO session_answers(session_id,ref_id,correct,points,combo,answered_at) VALUES(?,?,?,?,?,?)",
-		sessionID, refID, boolToInt(correct), points, combo, now,
-	); err != nil {
-		s.fail(r, 500, err.Error())
-		return nil
+	if _, err := daoAnswers.Ctx(ctx).Data(doAnswers{
+		SessionId:  sessionID,
+		RefId:      refID,
+		Correct:    boolToInt(correct),
+		Points:     points,
+		Combo:      combo,
+		AnsweredAt: gtime.Now(),
+	}).Insert(); err != nil {
+		return nil, gerror.Wrap(err, "记录作答失败")
 	}
 	if correct {
-		if _, err := s.DB.Exec("UPDATE practice_sessions SET correct=correct+1 WHERE id=?", sessionID); err != nil {
-			s.fail(r, 500, err.Error())
-			return nil
+		if _, err := daoSessions.Ctx(ctx).Where("id", sessionID).Increment("correct", 1); err != nil {
+			return nil, gerror.Wrap(err, "更新正确数失败")
 		}
-		if combo > ps.MaxCombo {
-			if _, err := s.DB.Exec("UPDATE practice_sessions SET max_combo=? WHERE id=?", combo, sessionID); err != nil {
-				s.fail(r, 500, err.Error())
-				return nil
+		if combo > ps["max_combo"].Int() {
+			if _, err := daoSessions.Ctx(ctx).Where("id", sessionID).Data(doSessions{MaxCombo: combo}).Update(); err != nil {
+				return nil, gerror.Wrap(err, "更新连击失败")
 			}
 		}
 		xp := 0
 		if points > 0 {
-			reason := fmt.Sprintf("%s 第%d题", subjectName(ps.Subject), countAnswers(s, sessionID)+1)
+			reason := fmt.Sprintf("%s 第%d题", subjectName(ps["subject"].String()), s.countAnswers(ctx, sessionID)+1)
 			if combo >= 3 {
 				reason += fmt.Sprintf(" 连击x%d", combo)
 			}
-			s.award(cid, points, reason)
+			s.award(childID, points, reason)
 			// 正反馈：答题得分同步转化为经验值（1:1）
 			xp = points
-			s.addXP(r.Context(), cid, xp)
+			s.addXP(ctx, childID, xp)
 		}
 		// 错题巩固答对 → 从错题本消除
 		if review {
-			s.resolveWrong(cid, ps.Subject, refID)
+			s.resolveWrong(ctx, childID, ps["subject"].String(), refID)
 		}
-		out := &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: xp}
-		s.ok(r, out)
-		return out
+		return &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: xp}, nil
 	}
 	// 答错 → 登记错题本
-	s.recordWrong(cid, ps.Subject, refID)
-	out := &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: 0}
-	s.ok(r, out)
-	return out
+	s.recordWrong(ctx, childID, ps["subject"].String(), refID)
+	return &answerOutcome{Correct: correct, Combo: combo, BasePoints: points, ComboBonus: comboBonusGot, Answer: answer, Review: review, XP: 0}, nil
 }
 
-// countAnswers 该场已作答题数（用于流水备注）。
-func countAnswers(s *sStudyPlanet, sessionID int) int {
-	var n int
-	_ = s.DB.Get(&n, "SELECT COUNT(*) FROM session_answers WHERE session_id=?", sessionID)
+// countAnswers 该场已作答题数（用于积分流水备注）。
+func (s *sStudyPlanet) countAnswers(ctx context.Context, sessionID int) int {
+	n, err := daoAnswers.Ctx(ctx).Where("session_id", sessionID).Count()
+	if err != nil {
+		return 0
+	}
 	return n
 }
 
 // streakOf 最近一次答错之后到现在的连续正确数。
-func (s *sStudyPlanet) streakOf(sessionID int) int {
-	var rows []struct {
-		Correct int `db:"correct"`
-	}
-	if err := s.DB.Select(&rows, "SELECT correct FROM session_answers WHERE session_id=? ORDER BY id DESC LIMIT 50", sessionID); err != nil {
-		return 0
+func (s *sStudyPlanet) streakOf(ctx context.Context, sessionID int) (int, error) {
+	all, err := daoAnswers.Ctx(ctx).Fields("correct").Where("session_id", sessionID).OrderDesc("id").Limit(50).All()
+	if err != nil {
+		return 0, gerror.Wrap(err, "查询作答记录失败")
 	}
 	n := 0
-	for _, row := range rows {
-		if row.Correct == 1 {
+	for _, r := range all {
+		if r["correct"].Int() == 1 {
 			n++
-		} else {
-			break
+			continue
 		}
+		break
 	}
-	return n
+	return n, nil
 }
-
-// lastWrongOffset 占位避免未使用告警（保留函数签名以便扩展）。
-func lastWrongOffset(sessionID int) int { return 50 }
 
 // subjectName 科目中文名（积分流水用）。
 func subjectName(subject string) string {
-	switch subject {
-	case "words":
-		return "单词"
-	case "reading":
-		return "阅读"
+	switch strings.TrimSpace(subject) {
+	case "words", "english":
+		return "英语"
+	case "reading", "chinese":
+		return "语文"
 	case "math":
 		return "数学"
+	case "physics":
+		return "物理"
+	case "chemistry":
+		return "化学"
+	case "biology":
+		return "生物"
+	case "history":
+		return "历史"
+	case "geography":
+		return "地理"
 	}
 	return "练习"
 }
 
-// FinishSession 结算一关：POST /api/sessions/:id/finish
+// FinishSession 结算一关。
 // 星级规则：正确率 >=90% 三星、>=70% 两星、>=50% 一星、否则零星；
 // 三星额外奖励 10 分，两星 5 分。同一关只结算一次。
-func (s *sStudyPlanet) FinishSession(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+func (s *sStudyPlanet) FinishSession(ctx context.Context, req *v1.FinishSessionReq) (res *v1.FinishSessionRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	id := s.idParam(r)
-	var ps model.PracticeSession
-	if err := s.DB.Get(&ps, "SELECT id,child_id,subject,level,total,correct,max_combo,bonus,stars,finished FROM practice_sessions WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该练习")
-		return
+	ps, err := daoSessions.Ctx(ctx).Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询练习场次失败")
 	}
-	if ps.ChildID != cid {
-		s.fail(r, 400, "无权结算他人练习")
-		return
+	if ps.IsEmpty() {
+		return nil, errNotFound("未找到该练习")
 	}
-	if ps.Finished == 1 {
-		s.ok(r, map[string]interface{}{"already": true, "stars": ps.Stars, "bonus": ps.Bonus, "max_combo": ps.MaxCombo})
-		return
+	if ps["child_id"].Int() != cid {
+		return nil, errAuth("无权结算他人练习")
 	}
+	if ps["finished"].Int() == 1 {
+		return &v1.FinishSessionRes{
+			Stars:    ps["stars"].Int(),
+			Bonus:    ps["bonus"].Int(),
+			MaxCombo: ps["max_combo"].Int(),
+			Already:  1,
+		}, nil
+	}
+	total, correct := ps["total"].Int(), ps["correct"].Int()
 	ratio := 0.0
-	if ps.Total > 0 {
-		ratio = float64(ps.Correct) / float64(ps.Total)
+	if total > 0 {
+		ratio = float64(correct) / float64(total)
 	}
-	stars := 0
-	bonus := 0
+	stars, bonus := 0, 0
 	switch {
 	case ratio >= 0.9:
 		stars, bonus = 3, 10
@@ -242,18 +274,18 @@ func (s *sStudyPlanet) FinishSession(r *ghttp.Request) {
 	case ratio >= 0.5:
 		stars = 1
 	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec(
-		"UPDATE practice_sessions SET stars=?, bonus=?, finished=1, finished_at=? WHERE id=?",
-		stars, bonus, now, id,
-	); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if _, err := daoSessions.Ctx(ctx).Where("id", req.ID).Data(doSessions{
+		Stars:      stars,
+		Bonus:      bonus,
+		Finished:   1,
+		FinishedAt: gtime.Now(),
+	}).Update(); err != nil {
+		return nil, gerror.Wrap(err, "结算练习失败")
 	}
 	// 星级奖励：奖分（积分）+ 经验值（1 星 10 / 2 星 20 / 3 星 35）
 	xpGain := map[int]int{1: 10, 2: 20, 3: 35}[stars]
 	if xpGain > 0 {
-		s.addXP(r.Context(), cid, xpGain)
+		s.addXP(ctx, cid, xpGain)
 	}
 	if bonus > 0 {
 		label := "关卡完成"
@@ -262,54 +294,50 @@ func (s *sStudyPlanet) FinishSession(r *ghttp.Request) {
 		}
 		s.award(cid, bonus, fmt.Sprintf("%s 奖励:+%d", label, bonus))
 	}
-	s.ok(r, map[string]interface{}{
-		"stars": stars, "bonus": bonus, "max_combo": ps.MaxCombo,
-		"correct": ps.Correct, "total": ps.Total, "xp_gained": xpGain,
-	})
+	return &v1.FinishSessionRes{
+		Stars:    stars,
+		Bonus:    bonus,
+		MaxCombo: ps["max_combo"].Int(),
+		Correct:  correct,
+		Total:    total,
+		XPGained: xpGain,
+	}, nil
 }
 
-// ListSessions 学生最近的练习记录（家长端统计用）：GET /api/sessions?student_id=
-func (s *sStudyPlanet) ListSessions(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+// ListSessions 学生最近的练习记录（家长端统计用）。
+func (s *sStudyPlanet) ListSessions(ctx context.Context, req *v1.ListSessionsReq) (res *v1.ListSessionsRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	var ss []model.PracticeSession
-	q := "SELECT id,child_id,subject,level,total,correct,max_combo,bonus,stars,finished,created_at,COALESCE(finished_at,'') AS finished_at FROM practice_sessions WHERE child_id=?"
-	args := []interface{}{cid}
-	if lv := r.GetQuery("level").String(); lv != "" {
-		q += " AND level=?"
-		args = append(args, lv)
+	m := daoSessions.Ctx(ctx).Where("child_id", cid)
+	if req.Level != "" {
+		m = m.Where("level", req.Level)
 	}
-	if sub := r.GetQuery("subject").String(); sub != "" {
-		q += " AND subject=?"
-		args = append(args, sub)
+	if req.Subject != "" {
+		m = m.Where("subject", req.Subject)
 	}
-	q += " ORDER BY id DESC LIMIT 50"
-	if err := s.DB.Select(&ss, q, args...); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	all, err := m.OrderDesc("id").Limit(50).All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询练习记录失败")
 	}
-	s.ok(r, ss)
+	out := make(v1.ListSessionsRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, sessionOf(r))
+	}
+	return &out, nil
 }
 
-// 答题接口改造辅助：把原「直接判分」的三个接口切换为「连击+场次」模式。
-// StartOrReuseSession 保证进行中的场次存在（前端进入关卡时调用）。
-func levelParam(r *ghttp.Request, def int) int {
-	if v := r.GetQuery("level").Int(); v > 0 {
-		return v
-	}
-	return def
-}
-
-func itoa(v int) string { return strconv.Itoa(v) }
-
-var _ = itoa // 预留
-
+// boolToInt 布尔 → 数据库 0/1。
 func boolToInt(b bool) int {
 	if b {
 		return 1
 	}
 	return 0
 }
+
+// 保持 g 包引用（扩展查询用），避免未使用导入。
+var _ = g.DB

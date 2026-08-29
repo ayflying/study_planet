@@ -3,9 +3,10 @@
 package seedcontent
 
 import (
+	"context"
 	"log"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/gogf/gf/v2/database/gdb"
 
 	"studyplanet/internal/contentgen"
 	"studyplanet/internal/contentlib"
@@ -13,19 +14,19 @@ import (
 
 // Run 启动时同步内置学科目录；内置题库只在 questions 表为空时导入一次，
 // 之后以数据库为准（管理员可通过导入接口增补，不会被启动覆盖）。
-func Run(db *sqlx.DB) error {
-	if err := contentlib.UpsertSubjects(db); err != nil {
+func Run(ctx context.Context, db gdb.DB) error {
+	if err := contentlib.UpsertSubjects(ctx, db); err != nil {
 		return err
 	}
-	var cnt int
-	if err := db.Get(&cnt, "SELECT COUNT(*) FROM questions"); err != nil {
+	cnt, err := db.Model("questions").Ctx(ctx).Count()
+	if err != nil {
 		return err
 	}
 	if cnt > 0 {
 		return nil
 	}
 	qs := contentgen.Generate()
-	imported, skipped, err := contentlib.ImportQuestions(db, qs)
+	imported, skipped, err := contentlib.ImportQuestions(ctx, db, qs)
 	if err != nil {
 		return err
 	}

@@ -37,10 +37,11 @@ type PubQuestion struct {
 
 // PickQuestionsReq 随机抽题：subject 必填，grade 取该年级相邻难度，limit 默认 5。
 type PickQuestionsReq struct {
-	g.Meta  `path:"/content/pick" method:"get" tags:"Content" summary:"随机抽题"`
-	Subject string `json:"subject" v:"required" in:"query"`
-	Grade   int    `json:"grade" in:"query"`
-	Limit   int    `json:"limit" in:"query"`
+	g.Meta    `path:"/content/pick" method:"get" tags:"Content" summary:"随机抽题"`
+	Subject   string `json:"subject" v:"required" in:"query"`
+	Grade     int    `json:"grade" in:"query"`
+	Limit     int    `json:"limit" in:"query"`
+	StudentID int    `json:"student_id" in:"query"`
 }
 type PickQuestionsRes []PubQuestion
 
@@ -55,6 +56,7 @@ type ContentItemRes PubQuestion
 type ContentAnswerReq struct {
 	g.Meta    `path:"/content/answer" method:"post" tags:"Content" summary:"题目判分"`
 	ID        int    `json:"id" v:"required"`
+	StudentID int    `json:"student_id" in:"query"`
 	Answer    string `json:"answer"`
 	SessionID int    `json:"session_id"`
 }
@@ -62,4 +64,10 @@ type ContentAnswerRes struct {
 	Correct     bool   `json:"correct"`
 	Answer      string `json:"answer,omitempty"`
 	Explanation string `json:"explanation,omitempty"`
+	// 场次作答（session_id>0）时返回的连击/XP 反馈字段。
+	Combo      int `json:"combo,omitempty"`
+	BasePoints int `json:"base_points,omitempty"`
+	ComboBonus int `json:"combo_bonus,omitempty"`
+	Review     int `json:"review,omitempty"`
+	XP         int `json:"xp,omitempty"`
 }

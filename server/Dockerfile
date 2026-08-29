@@ -15,7 +15,7 @@ COPY server/ ./
 COPY --from=client-build /client/dist ./client-dist
 
 ARG APP_VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X studyplanet/internal/service/studyplanet.AppVersion=${APP_VERSION}" -o /out/server .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X studyplanet/internal/logic/studyplanet.AppVersion=${APP_VERSION}" -o /out/server .
 
 # Alpine 自带 busybox wget，可供 Compose healthcheck 使用。
 FROM alpine:3.20

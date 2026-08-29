@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/gogf/gf/v2/database/gdb"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -31,14 +31,14 @@ type Entry struct {
 }
 
 type Board struct {
-	db      *sqlx.DB
+	db      gdb.DB
 	rdb     *redis.Client
 	enabled bool // Redis 是否可用
 	mu      sync.RWMutex
 }
 
 // New 创建排行榜；addr 为空时进入降级模式（纯数据库）。
-func New(db *sqlx.DB, addr string) *Board {
+func New(db gdb.DB, addr string) *Board {
 	b := &Board{db: db}
 	if strings.TrimSpace(addr) != "" {
 		b.rdb = redis.NewClient(&redis.Options{Addr: addr, DialTimeout: 2 * time.Second})
@@ -94,7 +94,7 @@ func (b *Board) upsertXP(ctx context.Context, week string, childID int, delta in
 	if full {
 		expr = "xp = VALUES(xp)"
 	}
-	_, err := b.db.ExecContext(ctx,
+	_, err := b.db.Exec(ctx,
 		"INSERT INTO leaderboard_weekly(week_key, child_id, xp) VALUES(?,?,?) "+
 			"ON DUPLICATE KEY UPDATE "+expr,
 		week, childID, delta,
@@ -124,20 +124,16 @@ func (b *Board) Top(ctx context.Context, week string, limit int, nameOf func(int
 		}
 	}
 	if rows == nil {
-		type dbRow struct {
-			ChildID int `db:"child_id"`
-			XP      int `db:"xp"`
-		}
-		var dbRows []dbRow
-		if err := b.db.SelectContext(ctx, &dbRows,
+		dbRows, err := b.db.GetAll(ctx,
 			"SELECT child_id, xp FROM leaderboard_weekly WHERE week_key=? ORDER BY xp DESC, child_id LIMIT ?",
 			week, limit,
-		); err != nil {
+		)
+		if err != nil {
 			log.Printf("排行榜: 数据库读取失败: %v", err)
 			return []Entry{}
 		}
 		for _, r := range dbRows {
-			rows = append(rows, kv{r.ChildID, r.XP})
+			rows = append(rows, kv{r["child_id"].Int(), r["xp"].Int()})
 		}
 	}
 	entries := make([]Entry, 0, len(rows))

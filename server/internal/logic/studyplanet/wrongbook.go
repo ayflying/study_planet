@@ -1,194 +1,194 @@
 package studyplanet
 
 import (
+	"context"
 	"time"
 
+	"github.com/gogf/gf/v2/database/gdb"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gctx"
+	"github.com/gogf/gf/v2/os/gtime"
 
+	v1 "studyplanet/api/studyplanet/v1"
 	"studyplanet/internal/leaderboard"
 )
-
-// gLog 非关键路径日志（失败不影响主流程）。
-func gLog(format string, args ...interface{}) {
-	g.Log().Errorf(gctx.New(), format, args...)
-}
 
 // ---------- 错题本：答错登记 / 巩固练习出题 ----------
 
 // recordWrong 答错时登记错题（已 resolved 的重新激活，wrong_count 累加）。
 // 只做附加记录，失败不影响作答主流程。
-func (s *sStudyPlanet) recordWrong(childID int, subject string, refID int) {
-	now := time.Now().Format("2006-01-02 15:04:05")
-	_, err := s.DB.Exec(
-		`INSERT INTO wrong_questions(child_id,subject,ref_id,wrong_count,resolved,last_wrong_at) VALUES(?,?,?,1,0,?)
-		 ON DUPLICATE KEY UPDATE wrong_count=wrong_count+1, resolved=0, last_wrong_at=VALUES(last_wrong_at)`,
-		childID, subject, refID, now,
-	)
-	if err != nil {
+// 说明：GF 的 OnDuplicate map 值按「列名引用」处理，累加表达式需用 gdb.Raw 显式更新。
+func (s *sStudyPlanet) recordWrong(ctx context.Context, childID int, subject string, refID int) {
+	where := func(m *gdb.Model) *gdb.Model {
+		return m.Where("child_id", childID).Where("subject", subject).Where("ref_id", refID)
+	}
+	cnt, err := where(daoWrongQ.Ctx(ctx)).Count()
+	if err == nil && cnt > 0 {
+		if _, err := where(daoWrongQ.Ctx(ctx)).Data(g.Map{
+			"wrong_count":   gdb.Raw("wrong_count+1"),
+			"resolved":      0,
+			"last_wrong_at": nowStr(),
+		}).Update(); err != nil {
+			gLog("错题累加失败 child=%d %s#%d: %v", childID, subject, refID, err)
+		}
+		return
+	}
+	if _, err := daoWrongQ.Ctx(ctx).Data(doWrongQ{
+		ChildId:     childID,
+		Subject:     subject,
+		RefId:       refID,
+		WrongCount:  1,
+		Resolved:    0,
+		LastWrongAt: gtime.Now(),
+	}).Insert(); err != nil {
 		gLog("错题登记失败 child=%d %s#%d: %v", childID, subject, refID, err)
 	}
 }
 
 // resolveWrong 巩固练习中答对后消除错题。
-func (s *sStudyPlanet) resolveWrong(childID int, subject string, refID int) {
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec(
-		"UPDATE wrong_questions SET resolved=1, last_reviewed_at=? WHERE child_id=? AND subject=? AND ref_id=?",
-		now, childID, subject, refID,
-	); err != nil {
+func (s *sStudyPlanet) resolveWrong(ctx context.Context, childID int, subject string, refID int) {
+	if _, err := daoWrongQ.Ctx(ctx).
+		Where("child_id", childID).
+		Where("subject", subject).
+		Where("ref_id", refID).
+		Data(doWrongQ{Resolved: 1, LastReviewedAt: gtime.Now()}).Update(); err != nil {
 		gLog("错题消除失败 child=%d %s#%d: %v", childID, subject, refID, err)
 	}
 }
 
 // wrongIDs 学生当前未消除的错题 id 列表（按错误次数倒序，优先巩固错得多的）。
-func (s *sStudyPlanet) wrongIDs(childID int, subject string, limit int) []int {
+func (s *sStudyPlanet) wrongIDs(ctx context.Context, childID int, subject string, limit int) []int {
 	if limit <= 0 {
 		return nil
 	}
-	var ids []int
-	if err := s.DB.Select(&ids,
-		"SELECT ref_id FROM wrong_questions WHERE child_id=? AND subject=? AND resolved=0 ORDER BY wrong_count DESC, last_wrong_at DESC LIMIT ?",
-		childID, subject, limit,
-	); err != nil {
+	all, err := daoWrongQ.Ctx(ctx).
+		Fields("ref_id").
+		Where("child_id", childID).
+		Where("subject", subject).
+		Where("resolved", 0).
+		OrderDesc("wrong_count").
+		OrderDesc("last_wrong_at").
+		Limit(limit).All()
+	if err != nil {
 		return nil
+	}
+	ids := make([]int, 0, len(all))
+	for _, r := range all {
+		ids = append(ids, r["ref_id"].Int())
 	}
 	return ids
 }
 
-// shouldReview 判断本题是否来自错题本（用于响应标记与答对消除）。
+// isReviewRef 判断本题是否来自错题本（用于响应标记与答对消除）。
 func isReviewRef(reviewRefs map[int]bool, id int) bool { return reviewRefs[id] }
 
-// MixInWrongQuestions 从候选题目中按间隔混入错题，返回混合后的题目 id 顺序。
-// 规则：每 poolEvery 道新题插入 1 道错题（至少 1 道、最多 wrongMax 道），错题不足时有多少插多少。
-func MixInWrongQuestions(freshIDs []int, wrongIDs []int, poolEvery int, wrongMax int) []int {
-	if len(wrongIDs) == 0 {
-		return freshIDs
-	}
-	if poolEvery <= 0 {
-		poolEvery = 2
-	}
-	if wrongMax <= 0 || wrongMax > len(wrongIDs) {
-		wrongMax = len(wrongIDs)
-	}
-	mixed := make([]int, 0, len(freshIDs)+wrongMax)
-	wi := 0
-	for i, id := range freshIDs {
-		mixed = append(mixed, id)
-		// 每做完 poolEvery 道新题，插入一道错题巩固
-		if (i+1)%poolEvery == 0 && wi < wrongMax {
-			mixed = append(mixed, wrongIDs[wi])
-			wi++
-		}
-	}
-	// 剩余错题补到末尾
-	for ; wi < wrongMax; wi++ {
-		mixed = append(mixed, wrongIDs[wi])
-	}
-	return mixed
-}
-
 // reviewRefs 构建本题集合中的错题标记（服务端自行判断，避免信任前端）。
-func (s *sStudyPlanet) reviewRefs(r *ghttp.Request, subject string, refIDs []int) map[int]bool {
-	cid := s.resolveChild(r)
-	if cid < 0 || len(refIDs) == 0 {
+func (s *sStudyPlanet) reviewRefs(ctx context.Context, childID int, subject string, refIDs []int) map[int]bool {
+	if childID < 0 || len(refIDs) == 0 {
 		return nil
 	}
-	q := "SELECT ref_id FROM wrong_questions WHERE child_id=? AND subject=? AND resolved=0 AND ref_id IN ("
-	args := []interface{}{cid, subject}
-	for i, id := range refIDs {
-		if i > 0 {
-			q += ","
-		}
-		q += "?"
-		args = append(args, id)
-	}
-	q += ")"
-	var ids []int
-	if err := s.DB.Select(&ids, q, args...); err != nil {
+	all, err := daoWrongQ.Ctx(ctx).
+		Fields("ref_id").
+		Where("child_id", childID).
+		Where("subject", subject).
+		Where("resolved", 0).
+		Where("ref_id", refIDs).All()
+	if err != nil {
 		return nil
 	}
-	m := make(map[int]bool, len(ids))
-	for _, id := range ids {
-		m[id] = true
+	m := make(map[int]bool, len(all))
+	for _, r := range all {
+		m[r["ref_id"].Int()] = true
 	}
 	return m
 }
 
-// ---------- 每周经验排行榜接口 ----------
-
-// WeeklyLeaderboard 周榜：GET /api/leaderboard/weekly?limit=20
-// 返回当前 ISO 周经验值最高的学生名单。
-func (s *sStudyPlanet) WeeklyLeaderboard(r *ghttp.Request) {
-	limit := r.GetQuery("limit").Int()
-	week := leaderboard.WeekKey(time.Now())
-	entries := s.Board.Top(r.Context(), week, limit, func(id int) (string, string) {
-		var name, avatar string
-		_ = s.DB.Get(&name, "SELECT name FROM children WHERE id=?", id)
-		_ = s.DB.Get(&avatar, "SELECT avatar FROM children WHERE id=?", id)
-		return name, avatar
-	})
-	// 学生自己的排名（可能不在前 N）
-	cid := s.resolveChild(r)
-	var myXP, myRank int
-	_ = s.DB.Get(&myXP, "SELECT COALESCE(xp,0) FROM children WHERE id=?", cid)
-	for _, e := range entries {
-		if e.ChildID == cid {
-			myRank = e.Rank
-			break
-		}
+// ListWrongQuestions 学生错题本（可选按 subject 过滤）。
+func (s *sStudyPlanet) ListWrongQuestions(ctx context.Context, req *v1.ListWrongQuestionsReq) (res *v1.ListWrongQuestionsRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
 	}
-	s.ok(r, map[string]interface{}{
-		"week":     week,
-		"redis":    s.Board.Enabled(),
-		"entries":  entries,
-		"my_xp":    myXP,
-		"my_rank":  myRank,
-		"my_id":    cid,
-	})
+	if cid < 0 {
+		return nil, errNotFound("学生不存在")
+	}
+	m := daoWrongQ.Ctx(ctx).Where("child_id", cid)
+	if req.Subject != "" {
+		m = m.Where("subject", req.Subject)
+	}
+	all, err := m.Order("resolved").OrderDesc("wrong_count").OrderDesc("last_wrong_at").Limit(200).All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询错题本失败")
+	}
+	out := make(v1.ListWrongQuestionsRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, v1.WrongQuestion{
+			ID:             r["id"].Int(),
+			ChildID:        r["child_id"].Int(),
+			Subject:        r["subject"].String(),
+			RefID:          r["ref_id"].Int(),
+			WrongCount:     r["wrong_count"].Int(),
+			Resolved:       r["resolved"].Int(),
+			LastWrongAt:    r["last_wrong_at"].String(),
+			LastReviewedAt: r["last_reviewed_at"].String(),
+		})
+	}
+	return &out, nil
 }
 
-// ---------- 错题本接口 ----------
+// ---------- 每周经验排行榜 ----------
 
-// ListWrongQuestions 学生错题本：GET /api/wrong-questions?subject=
-func (s *sStudyPlanet) ListWrongQuestions(r *ghttp.Request) {
-	cid := s.resolveChild(r)
-	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+// WeeklyLeaderboard 周榜：返回当前 ISO 周经验值最高的学生名单。
+func (s *sStudyPlanet) WeeklyLeaderboard(ctx context.Context, req *v1.WeeklyLeaderboardReq) (res *v1.WeeklyLeaderboardRes, err error) {
+	limit := req.Limit
+	if limit <= 0 || limit > 100 {
+		limit = 20
 	}
-	subject := r.GetQuery("subject").String()
-	q := "SELECT id,child_id,subject,ref_id,wrong_count,resolved,last_wrong_at,COALESCE(last_reviewed_at,'') AS last_reviewed_at FROM wrong_questions WHERE child_id=?"
-	args := []interface{}{cid}
-	if subject != "" {
-		q += " AND subject=?"
-		args = append(args, subject)
+	week := leaderboard.WeekKey(time.Now())
+	var entries []leaderboard.Entry
+	if s.Board != nil {
+		entries = s.Board.Top(ctx, week, limit, func(id int) (string, string) {
+			rec, err := daoChildren.Ctx(ctx).Fields("name,avatar").Where("id", id).One()
+			if err != nil || rec.IsEmpty() {
+				return "", ""
+			}
+			return rec["name"].String(), rec["avatar"].String()
+		})
 	}
-	q += " ORDER BY resolved, wrong_count DESC, last_wrong_at DESC LIMIT 200"
-	var ws []map[string]interface{}
-	rows, err := s.DB.Queryx(q, args...)
+	// 学生自己的排名（可能不在前 N）
+	cid, err := s.resolveChild(ctx, req.StudentID)
 	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		m := map[string]interface{}{}
-		if err := rows.MapScan(m); err != nil {
-			s.fail(r, 500, err.Error())
-			return
+	myXP, myRank := 0, 0
+	if cid > 0 {
+		v, err := daoChildren.Ctx(ctx).Fields("COALESCE(xp,0) AS xp").Where("id", cid).Value()
+		if err == nil {
+			myXP = v.Int()
 		}
-		// MySQL 驱动把 VARCHAR 扫成 []byte，这里统一转字符串（避免 JSON 输出 base64）
-		for k, v := range m {
-			if b, isBytes := v.([]byte); isBytes {
-				m[k] = string(b)
+		for _, e := range entries {
+			if e.ChildID == cid {
+				myRank = e.Rank
+				break
 			}
 		}
-		ws = append(ws, m)
 	}
-	if ws == nil {
-		ws = []map[string]interface{}{}
+	res = &v1.WeeklyLeaderboardRes{
+		Week:    week,
+		Redis:   s.Board != nil && s.Board.Enabled(),
+		Entries: make([]v1.LeaderboardEntry, 0, len(entries)),
+		MyXP:    myXP,
+		MyRank:  myRank,
+		MyID:    cid,
 	}
-	s.ok(r, ws)
+	for _, e := range entries {
+		res.Entries = append(res.Entries, v1.LeaderboardEntry{
+			Rank:    e.Rank,
+			ChildID: e.ChildID,
+			Name:    e.Name,
+			Avatar:  e.Avatar,
+			XP:      e.XP,
+		})
+	}
+	return res, nil
 }

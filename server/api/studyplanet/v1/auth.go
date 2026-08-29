@@ -24,16 +24,30 @@ type ParentLoginRes struct {
 
 // CasdoorLoginReq 跳转 Casdoor 授权页（302）。
 type CasdoorLoginReq struct {
-	g.Meta `path:"/parent/casdoor/login" method:"get,all" tags:"ParentAuth" summary:"Casdoor 登录跳转"`
+	g.Meta      `path:"/parent/casdoor/login" method:"get,all" tags:"ParentAuth" summary:"Casdoor 登录跳转"`
+	// RedirectURI 控制器按请求推导的回调地址。
+	RedirectURI string `json:"-"`
 }
-type CasdoorLoginRes struct{}
+type CasdoorLoginRes struct {
+	// Location 为 Casdoor 授权页完整地址，由 logic 计算返回，
+	// 控制器据此执行 302 跳转（HTTP 语义保留在边缘层）。
+	Location string `json:"-"`
+}
 
 // CasdoorCallbackReq Casdoor 授权码回调：写 token 到 localStorage 后回首页。
 type CasdoorCallbackReq struct {
-	g.Meta `path:"/parent/casdoor/callback" method:"get,all" tags:"ParentAuth" summary:"Casdoor 回调"`
-	Code   string `json:"code"`
+	g.Meta     `path:"/parent/casdoor/callback" method:"get,all" tags:"ParentAuth" summary:"Casdoor 回调"`
+	Code       string `json:"code"`
+	// RedirectURI 控制器按请求推导的回调地址（logic 用来向 Casdoor 换 token）。
+	RedirectURI string `json:"-"`
+	// ClientIP / TLS 语义同上，保留 HTTP 边缘信息由控制器注入。
+	IsTLS bool `json:"-"`
 }
-type CasdoorCallbackRes struct{}
+type CasdoorCallbackRes struct {
+	// HTML 为登录完成后的回跳页（写入 localStorage 后跳首页），
+	// 控制器以 text/html 输出（HTTP 语义保留在边缘层）。
+	HTML string `json:"-"`
+}
 
 // SetPinReq 修改家长 PIN（家长鉴权）。
 type SetPinReq struct {

@@ -4,7 +4,8 @@ import "github.com/gogf/gf/v2/frame/g"
 
 // PointsSummaryReq 积分汇总（公开接口）。
 type PointsSummaryReq struct {
-	g.Meta `path:"/points" method:"get" tags:"Points" summary:"积分汇总"`
+	g.Meta    `path:"/points" method:"get" tags:"Points" summary:"积分汇总"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type PointsSummaryRes struct {
 	Total       int `json:"total"`
@@ -23,6 +24,7 @@ type PointsLogItem struct {
 
 // PointsLogReq 积分流水（最近 100 条，公开接口）。
 type PointsLogReq struct {
-	g.Meta `path:"/points/log" method:"get" tags:"Points" summary:"积分流水"`
+	g.Meta    `path:"/points/log" method:"get" tags:"Points" summary:"积分流水"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type PointsLogRes []PointsLogItem

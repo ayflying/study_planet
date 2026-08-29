@@ -40,30 +40,25 @@ var Main = gcmd.Command{
 			return err
 		}
 
-		sqlDB, err := db.Open(cfg.Database.Driver, cfg.Database.DSN)
-		if err != nil {
-			return err
-		}
-		defer sqlDB.Close()
-
-		// GoFrame ORM 数据源：让 dao 层（g.DB()）与业务层 sqlx 指向同一数据库
+		// GoFrame ORM 数据源：dao 层与业务层统一走 g.DB()（MySQL only）
 		if err := gdbinit.Setup(cfg.Database.Driver, cfg.Database.DSN); err != nil {
 			return err
 		}
+		orm := g.DB()
 
 		if cfg.Seed.Enabled {
-			if err = seed.Run(sqlDB, cfg.Parent.Pin); err != nil {
+			if err := seed.Run(ctx, orm, cfg.Parent.Pin); err != nil {
 				log.Printf("种子数据警告: %v", err)
 			}
 		}
 
 		// 动态内容库：同步学科目录，空题库时导入内置全科题（之后以数据库为准）
-		if err := seedcontent.Run(sqlDB); err != nil {
+		if err := seedcontent.Run(ctx, orm); err != nil {
 			log.Printf("内容库初始化警告: %v", err)
 		}
 
 		// 每周经验排行榜：Redis 实时 + 每小时持久化到数据库
-		board := leaderboard.New(sqlDB, os.Getenv("REDIS_ADDR"))
+		board := leaderboard.New(orm, os.Getenv("REDIS_ADDR"))
 		go func() {
 			ticker := time.NewTicker(time.Hour)
 			defer ticker.Stop()
@@ -74,8 +69,8 @@ var Main = gcmd.Command{
 			}
 		}()
 
-		// 依赖注入：业务实现（logic 层 sStudyPlanet）需要 sqlx 连接、配置与排行榜模块
-		studyplanet.SetDeps(sqlDB, cfg, board)
+		// 依赖注入：业务实现（logic 层 sStudyPlanet）需要配置与排行榜模块
+		studyplanet.SetDeps(cfg, board)
 		s := g.Server()
 		s.SetPort(cfg.Server.Port)
 		s.SetDumpRouterMap(true)

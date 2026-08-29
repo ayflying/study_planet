@@ -28,8 +28,9 @@ type AddRewardRes struct {
 
 // RedeemReq 学生兑换奖励（公开接口，需家长确认）。
 type RedeemReq struct {
-	g.Meta `path:"/rewards/:id/redeem" method:"post" tags:"Reward" summary:"兑换奖励"`
-	ID     int `in:"path" json:"-"`
+	g.Meta    `path:"/rewards/:id/redeem" method:"post" tags:"Reward" summary:"兑换奖励"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type RedeemRes struct {
 	OK      bool   `json:"ok"`

@@ -7,10 +7,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"context"
 	"sort"
 	"strings"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/gogf/gf/v2/database/gdb"
 )
 
 // Subject 学科目录条目。
@@ -60,9 +61,9 @@ func HashQuestion(q *Question) string {
 }
 
 // UpsertSubjects 写入内置学科目录（幂等，按 code 更新展示信息）。
-func UpsertSubjects(db *sqlx.DB) error {
+func UpsertSubjects(ctx context.Context, db gdb.DB) error {
 	for _, s := range builtinSubjects {
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			`INSERT INTO subjects(code,name,icon,color,min_grade,max_grade,sort,enabled) VALUES(?,?,?,?,?,?,?,?)
 			 ON DUPLICATE KEY UPDATE name=VALUES(name), icon=VALUES(icon), color=VALUES(color), min_grade=VALUES(min_grade), max_grade=VALUES(max_grade), sort=VALUES(sort)`,
 			s.Code, s.Name, s.Icon, s.Color, s.MinGrade, s.MaxGrade, s.Sort, s.Enabled,
@@ -75,14 +76,14 @@ func UpsertSubjects(db *sqlx.DB) error {
 
 // ImportQuestions 批量导入题目：按 content_hash 去重（已存在跳过），返回导入条数。
 // 这是唯一的题目入库通道：采集脚本/生成器都输出 []Question 后调用本函数。
-func ImportQuestions(db *sqlx.DB, qs []Question) (imported int, skipped int, err error) {
+func ImportQuestions(ctx context.Context, db gdb.DB, qs []Question) (imported int, skipped int, err error) {
 	for i := range qs {
 		q := &qs[i]
-		if err := normalizeQuestion(q); err != nil {
+		if err := NormalizeQuestion(q); err != nil {
 			return imported, skipped, fmt.Errorf("第 %d 题: %w", i+1, err)
 		}
 		hash := HashQuestion(q)
-		res, err := db.Exec(
+		res, err := db.Exec(ctx,
 			`INSERT IGNORE INTO questions(subject,grade,topic,qtype,passage,question,options,answer,explanation,difficulty,source,content_hash,enabled)
 			 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)`,
 			q.Subject, q.Grade, q.Topic, q.QType, nullIfEmpty(q.Passage), q.Question, q.OptionsJSON, q.Answer, nullIfEmpty(q.Explanation), q.Difficulty, q.Source, hash,
@@ -100,8 +101,8 @@ func ImportQuestions(db *sqlx.DB, qs []Question) (imported int, skipped int, err
 	return imported, skipped, nil
 }
 
-// normalizeQuestion 校验并补全题目字段，把 Options 序列化为 JSON。
-func normalizeQuestion(q *Question) error {
+// NormalizeQuestion 校验并补全题目字段，把 Options 序列化为 JSON（导入通道对外暴露）。
+func NormalizeQuestion(q *Question) error {
 	q.Subject = strings.TrimSpace(q.Subject)
 	if q.Subject == "" {
 		return fmt.Errorf("subject 不能为空")
@@ -149,10 +150,9 @@ func nullIfEmpty(s string) interface{} {
 }
 
 // ListSubjects 学科列表（enabled=1 按顺序）。
-func ListSubjects(db *sqlx.DB) ([]Subject, error) {
+func ListSubjects(ctx context.Context, db gdb.DB) ([]Subject, error) {
 	var ss []Subject
-	err := db.Select(&ss, "SELECT code,name,icon,color,min_grade,max_grade,sort,enabled FROM subjects WHERE enabled=1 ORDER BY sort, id")
-	if err != nil {
+	if err := db.Model("subjects").Ctx(ctx).Where("enabled", 1).Order("sort", "id").Scan(&ss); err != nil {
 		return nil, err
 	}
 	if ss == nil {
@@ -162,25 +162,22 @@ func ListSubjects(db *sqlx.DB) ([]Subject, error) {
 }
 
 // CountBySubject 每个学科的题目数（按学段），用于前端展示。
-func CountBySubject(db *sqlx.DB) (map[string]int, error) {
-	var rows []struct {
-		Subject string `db:"subject"`
-		Cnt     int    `db:"cnt"`
-	}
-	if err := db.Select(&rows, "SELECT subject, COUNT(*) AS cnt FROM questions WHERE enabled=1 GROUP BY subject"); err != nil {
+func CountBySubject(ctx context.Context, db gdb.DB) (map[string]int, error) {
+	all, err := db.GetAll(ctx, "SELECT subject, COUNT(*) AS cnt FROM questions WHERE enabled=1 GROUP BY subject")
+	if err != nil {
 		return nil, err
 	}
-	m := make(map[string]int, len(rows))
-	for _, r := range rows {
-		m[r.Subject] = r.Cnt
+	m := make(map[string]int, len(all))
+	for _, r := range all {
+		m[r["subject"].String()] = r["cnt"].Int()
 	}
 	return m, nil
 }
 
 // SubjectExists 判断学科 code 是否已启用（含题目为 0 的科目）。
-func SubjectExists(db *sqlx.DB, code string) (bool, error) {
-	var n int
-	if err := db.Get(&n, "SELECT COUNT(1) FROM subjects WHERE code=? AND enabled=1", code); err != nil {
+func SubjectExists(ctx context.Context, db gdb.DB, code string) (bool, error) {
+	n, err := db.Model("subjects").Ctx(ctx).Where("code", code).Where("enabled", 1).Count()
+	if err != nil {
 		return false, err
 	}
 	return n > 0, nil

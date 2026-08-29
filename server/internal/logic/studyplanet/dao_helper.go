@@ -1,23 +1,26 @@
 package studyplanet
 
-import (
-	"context"
+import "studyplanet/internal/dao"
 
-	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gctx"
-
-	"studyplanet/internal/dao"
-)
-
-// ctxOf 取 GF 上下文（handler 内部延迟获取，避免每处都传）。
-func ctxOf() context.Context { return gctx.New() }
-
-// daoChildren / daoTasks / daoRewards / daoPointsLog 常用表对象快捷入口。
+// dao 快捷入口（GF 规范：业务层统一通过 dao 访问数据库）。
+// dao 由 gf gen dao 生成（internal/dao），底层使用 g.DB() ORM 数据源。
 var (
 	daoChildren  = dao.Children
 	daoTasks     = dao.Tasks
 	daoRewards   = dao.Rewards
 	daoPointsLog = dao.PointsLog
+	daoSettings  = dao.Settings
+	daoParents   = dao.Parents
+	daoWords     = dao.Words
+	daoReadings  = dao.Readings
+	daoReadingQ  = dao.ReadingQuestions
+	daoMath      = dao.MathProblems
+	daoWordProg  = dao.WordProgress
+	daoRedempt   = dao.Redemptions
+	daoSessions  = dao.PracticeSessions
+	daoAnswers   = dao.SessionAnswers
+	daoWrongQ    = dao.WrongQuestions
+	daoSubjects  = dao.Subjects
+	daoQuestions = dao.Questions
+	daoWeekly    = dao.LeaderboardWeekly
 )
-
-var _ = g.DB // 保留 g.DB 引用，供后续扩展

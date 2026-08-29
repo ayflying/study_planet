@@ -22,8 +22,9 @@ type ListWordsRes []Word
 
 // WordDetailReq 单词详情 + 当前学生掌握状态。
 type WordDetailReq struct {
-	g.Meta `path:"/words/:id" method:"get" tags:"Learn" summary:"单词详情"`
-	ID     int `in:"path" json:"-"`
+	g.Meta    `path:"/words/:id" method:"get" tags:"Learn" summary:"单词详情"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type WordDetailRes struct {
 	Word  Word `json:"word"`
@@ -34,12 +35,20 @@ type WordDetailRes struct {
 type WordProgressReq struct {
 	g.Meta    `path:"/words/:id/progress" method:"post" tags:"Learn" summary:"标记单词掌握"`
 	ID        int  `in:"path" json:"-"`
+	StudentID int  `json:"student_id" in:"query"`
 	Known     bool `json:"known"`
 	SessionID int  `json:"session_id"`
 }
 type WordProgressRes struct {
-	OK    bool `json:"ok,omitempty"`
-	Known int  `json:"known"`
+	OK      bool `json:"ok,omitempty"`
+	Known   int  `json:"known"`
+	Correct bool `json:"correct,omitempty"`
+	// 场次作答（session_id>0）时返回的连击/XP 反馈字段。
+	Combo      int `json:"combo,omitempty"`
+	BasePoints int `json:"base_points,omitempty"`
+	ComboBonus int `json:"combo_bonus,omitempty"`
+	Review     int `json:"review,omitempty"`
+	XP         int `json:"xp,omitempty"`
 }
 
 // Reading 阅读理解短文。
@@ -64,8 +73,9 @@ type ReadingQuestion struct {
 
 // ReadingDetailReq 阅读详情 + 题目列表。
 type ReadingDetailReq struct {
-	g.Meta `path:"/readings/:id" method:"get" tags:"Learn" summary:"阅读详情"`
-	ID     int `in:"path" json:"-"`
+	g.Meta    `path:"/readings/:id" method:"get" tags:"Learn" summary:"阅读详情"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type ReadingDetailRes struct {
 	Reading   Reading           `json:"reading"`
@@ -76,6 +86,7 @@ type ReadingDetailRes struct {
 type ReadingAnswerReq struct {
 	g.Meta     `path:"/readings/:id/answer" method:"post" tags:"Learn" summary:"阅读作答"`
 	ID         int    `in:"path" json:"-"`
+	StudentID  int    `json:"student_id" in:"query"`
 	QuestionID int    `json:"question_id"`
 	Answer     string `json:"answer"`
 	SessionID  int    `json:"session_id"`
@@ -83,6 +94,12 @@ type ReadingAnswerReq struct {
 type ReadingAnswerRes struct {
 	Correct       bool   `json:"correct"`
 	CorrectAnswer string `json:"correct_answer"`
+	// 场次作答（session_id>0）时返回的连击/XP 反馈字段。
+	Combo      int `json:"combo,omitempty"`
+	BasePoints int `json:"base_points,omitempty"`
+	ComboBonus int `json:"combo_bonus,omitempty"`
+	Review     int `json:"review,omitempty"`
+	XP         int `json:"xp,omitempty"`
 }
 
 // MathProblem 数学题目。
@@ -107,6 +124,7 @@ type ListMathRes []MathProblem
 type MathAnswerReq struct {
 	g.Meta    `path:"/math/:id/answer" method:"post" tags:"Learn" summary:"数学作答"`
 	ID        int    `in:"path" json:"-"`
+	StudentID int    `json:"student_id" in:"query"`
 	Answer    string `json:"answer"`
 	SessionID int    `json:"session_id"`
 }
@@ -114,4 +132,10 @@ type MathAnswerRes struct {
 	Correct     bool   `json:"correct"`
 	Explanation string `json:"explanation"`
 	Answer      string `json:"answer"`
+	// 场次作答（session_id>0）时返回的连击/XP 反馈字段。
+	Combo      int `json:"combo,omitempty"`
+	BasePoints int `json:"base_points,omitempty"`
+	ComboBonus int `json:"combo_bonus,omitempty"`
+	Review     int `json:"review,omitempty"`
+	XP         int `json:"xp,omitempty"`
 }

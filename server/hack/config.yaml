@@ -3,3 +3,10 @@ gfcli:
     dao:
       - link: "mysql:study_planet:cEweJTJrFSirtNXe@tcp(100.66.1.1:3306)/study_planet"
         descriptionTag: true
+    service:
+      srcFolder: "internal/logic"
+      dstFolder: "internal/service"
+      stPattern: "^s([A-Z]\\w+)$"
+    ctrl:
+      apiFolder: "api"
+      ctrlFolder: "internal/controller"

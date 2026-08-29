@@ -1,753 +1,764 @@
 package studyplanet
 
 import (
-	"bytes"
 	"context"
-	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gogf/gf/v2/database/gdb"
+	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/net/ghttp"
-	"github.com/gogf/gf/v2/os/gctx"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/jmoiron/sqlx"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/gogf/gf/v2/os/gtime"
 
-	"studyplanet/internal/config"
-	"studyplanet/internal/leaderboard"
-	"studyplanet/internal/model"
-	"studyplanet/internal/service"
+	v1 "studyplanet/api/studyplanet/v1"
 )
 
-// AppVersion 由构建时注入（Dockerfile -ldflags -X 写入），未注入时读 VERSION 文件。
-var AppVersion string
+// ---------- 通用读取助手（Record → api 结构） ----------
 
-// sStudyPlanet 业务实现（命名符合 gf gen service 的 stPattern ^s([A-Z]\w+)$），
-// 持有数据库连接与运行配置，作为所有业务方法的接收者。
-type sStudyPlanet struct {
-	DB    *sqlx.DB
-	Cfg   *config.Config
-	Board *leaderboard.Board // 每周经验排行榜（独立模块，可为降级模式）
-}
-
-// SetDeps 注入运行依赖（logic 包不直接依赖 config 装配流程，由 cmd 启动时调用）。
-// 注意：init() 注册时 local 必须已是可用实例，这里填充字段而非替换实例，
-// 避免 service 层持有的接口指向旧指针。
-func SetDeps(db *sqlx.DB, cfg *config.Config, board *leaderboard.Board) *sStudyPlanet {
-	if board == nil {
-		board = leaderboard.New(db, "")
-	}
-	local.DB, local.Cfg, local.Board = db, cfg, board
-	return local
-}
-
-// local 当前业务实现实例：init 注册时创建（非 nil），SetDeps 填充依赖。
-var local = &sStudyPlanet{}
-
-// Study 供外部包获取当前业务实现实例。
-func Study() *sStudyPlanet { return local }
-
-// addXP 给学生累加经验值：children.xp 总量 + 周榜（Redis/降级数据库）。
-func (s *sStudyPlanet) addXP(ctx context.Context, childID int, delta int) {
-	if delta == 0 {
-		return
-	}
-	if _, err := s.DB.Exec("UPDATE children SET xp=COALESCE(xp,0)+? WHERE id=?", delta, childID); err != nil {
-		gLog("xp 累加失败 child=%d: %v", childID, err)
-	}
-	if s.Board != nil {
-		s.Board.AddXP(ctx, childID, delta)
+// studentOf children 记录 → 学生档案。
+func studentOf(r gdb.Record) v1.Student {
+	return v1.Student{
+		ID:        r["id"].Int(),
+		Name:      r["name"].String(),
+		Username:  r["username"].String(),
+		Avatar:    r["avatar"].String(),
+		Grade:     r["grade"].Int(),
+		CreatedAt: r["created_at"].String(),
 	}
 }
 
-func (s *sStudyPlanet) ok(r *ghttp.Request, data interface{}) {
-	r.Response.WriteJson(data)
+// sessionOf practice_sessions 记录 → 练习场次（时间列可空统一转字符串）。
+func sessionOf(r gdb.Record) v1.PracticeSession {
+	return v1.PracticeSession{
+		ID:         r["id"].Int(),
+		ChildID:    r["child_id"].Int(),
+		Subject:    r["subject"].String(),
+		Level:      r["level"].Int(),
+		Total:      r["total"].Int(),
+		Correct:    r["correct"].Int(),
+		MaxCombo:   r["max_combo"].Int(),
+		Bonus:      r["bonus"].Int(),
+		Stars:      r["stars"].Int(),
+		Finished:   r["finished"].Int(),
+		CreatedAt:  r["created_at"].String(),
+		FinishedAt: r["finished_at"].String(),
+	}
 }
 
-func (s *sStudyPlanet) fail(r *ghttp.Request, code int, msg string) {
-	r.Response.WriteStatusExit(code, map[string]interface{}{"error": msg})
+// taskOf tasks 记录 → 任务（due_date/completed_at 可空，空值输出 ""）。
+func taskOf(r gdb.Record) v1.Task {
+	due, completed := "", ""
+	if !r["due_date"].IsNil() {
+		due = r["due_date"].GTime().Format("Y-m-d")
+	}
+	if !r["completed_at"].IsNil() {
+		completed = r["completed_at"].GTime().Format("Y-m-d H:i:s")
+	}
+	return v1.Task{
+		ID:          r["id"].Int(),
+		Title:       r["title"].String(),
+		Type:        r["type"].String(),
+		DueDate:     due,
+		Points:      r["points"].Int(),
+		Status:      r["status"].String(),
+		CreatedAt:   r["created_at"].String(),
+		CompletedAt: completed,
+	}
 }
 
-// resolveChild 解析本次请求对应的学生 id：查询参数 student_id，缺省为 1（兼容旧客户端）。
+// resolveChild 解析本次请求对应的学生 id：来自 req 的 student_id，缺省为 1（兼容旧客户端）。
 // 学生不存在时返回 -1。
-func (s *sStudyPlanet) resolveChild(r *ghttp.Request) int {
-	id := r.GetQuery("student_id").Int()
+func (s *sStudyPlanet) resolveChild(ctx context.Context, studentID int) (int, error) {
+	id := studentID
 	if id <= 0 {
 		id = 1
 	}
-	var cnt int
-	if err := s.DB.Get(&cnt, "SELECT COUNT(*) FROM children WHERE id=?", id); err != nil || cnt == 0 {
-		return -1
-	}
-	return id
-}
-
-// award 记录指定学生的积分变动（不阻塞主流程，失败仅记日志）。
-func (s *sStudyPlanet) award(childID int, delta int, reason string) {
-	now := time.Now().Format("2006-01-02 15:04:05")
-	_, err := s.DB.Exec(
-		"INSERT INTO points_log(child_id,delta,reason,created_at) VALUES(?,?,?,?)",
-		childID, delta, reason, now,
-	)
+	cnt, err := daoChildren.Ctx(ctx).Where("id", id).Count()
 	if err != nil {
-		g.Log().Errorf(gctx.New(), "award 记录积分失败 child=%d delta=%d: %v", childID, delta, err)
+		return -1, gerror.Wrap(err, "查询学生失败")
 	}
+	if cnt == 0 {
+		return -1, nil
+	}
+	return id, nil
 }
 
-func (s *sStudyPlanet) idParam(r *ghttp.Request) int {
-	id, _ := strconv.Atoi(r.Get("id").String())
-	return id
+// pointsTotal 指定学生当前积分总量（points_log 汇总）。
+func (s *sStudyPlanet) pointsTotal(ctx context.Context, childID int) (int, error) {
+	v, err := daoPointsLog.Ctx(ctx).Fields("COALESCE(SUM(delta),0) AS total").Where("child_id", childID).Value()
+	if err != nil {
+		return 0, gerror.Wrap(err, "查询积分失败")
+	}
+	return v.Int(), nil
 }
 
 // ---------- 健康检查 ----------
-func (s *sStudyPlanet) Health(r *ghttp.Request) {
-	s.ok(r, map[string]interface{}{
-		"status":  "ok",
-		"time":    time.Now().Format(time.RFC3339),
-		"app":     "studyplanet",
-		"version": CurrentVersion(),
-	})
-}
 
-// CurrentVersion 返回构建注入的版本号（未注入时读 VERSION 文件，兜底 dev）。
-func CurrentVersion() string {
-	if AppVersion != "" {
-		return AppVersion
-	}
-	if b, err := os.ReadFile("VERSION"); err == nil {
-		return string(bytes.TrimSpace(b))
-	}
-	return "dev"
+// Health 健康检查：返回运行状态与版本号。
+func (s *sStudyPlanet) Health(ctx context.Context, req *v1.HealthReq) (res *v1.HealthRes, err error) {
+	return &v1.HealthRes{
+		Status:  "ok",
+		Time:    time.Now().Format(time.RFC3339),
+		App:     "studyplanet",
+		Version: CurrentVersion(),
+	}, nil
 }
 
 // ---------- 单词卡片 ----------
-func (s *sStudyPlanet) ListWords(r *ghttp.Request) {
-	level := r.GetQuery("level").String()
-	q := "SELECT id,level,word,meaning,phonetic,example,created_at FROM words"
-	args := []interface{}{}
-	if level != "" {
-		q += " WHERE level=?"
-		args = append(args, level)
+
+// ListWords 单词列表（可选按 level 过滤）。
+func (s *sStudyPlanet) ListWords(ctx context.Context, req *v1.ListWordsReq) (res *v1.ListWordsRes, err error) {
+	m := daoWords.Ctx(ctx).Order("level", "id")
+	if req.Level != "" {
+		m = m.Where("level", req.Level)
 	}
-	q += " ORDER BY level, id"
-	var words []model.Word
-	if err := s.DB.Select(&words, q, args...); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	all, err := m.All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询单词失败")
 	}
-	s.ok(r, words)
+	out := make(v1.ListWordsRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, v1.Word{
+			ID:        r["id"].Int(),
+			Level:     r["level"].Int(),
+			Word:      r["word"].String(),
+			Meaning:   r["meaning"].String(),
+			Phonetic:  r["phonetic"].String(),
+			Example:   r["example"].String(),
+			CreatedAt: r["created_at"].String(),
+		})
+	}
+	return &out, nil
 }
 
-func (s *sStudyPlanet) WordDetail(r *ghttp.Request) {
-	id := s.idParam(r)
-	var w model.Word
-	if err := s.DB.Get(&w, "SELECT id,level,word,meaning,phonetic,example,created_at FROM words WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该单词")
-		return
+// WordDetail 单词详情 + 当前学生掌握状态。
+func (s *sStudyPlanet) WordDetail(ctx context.Context, req *v1.WordDetailReq) (res *v1.WordDetailRes, err error) {
+	w, err := daoWords.Ctx(ctx).Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询单词失败")
+	}
+	if w.IsEmpty() {
+		return nil, errNotFound("未找到该单词")
+	}
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
 	}
 	known := 0
-	var p model.WordProgress
-	if err := s.DB.Get(&p, "SELECT word_id,child_id,known FROM word_progress WHERE word_id=? AND child_id=?", id, s.resolveChild(r)); err == nil {
-		known = p.Known
+	if cid > 0 {
+		p, err := daoWordProg.Ctx(ctx).Where("word_id", req.ID).Where("child_id", cid).One()
+		if err == nil && !p.IsEmpty() {
+			known = p["known"].Int()
+		}
 	}
-	s.ok(r, map[string]interface{}{"word": w, "known": known})
+	return &v1.WordDetailRes{
+		Word: v1.Word{
+			ID:        w["id"].Int(),
+			Level:     w["level"].Int(),
+			Word:      w["word"].String(),
+			Meaning:   w["meaning"].String(),
+			Phonetic:  w["phonetic"].String(),
+			Example:   w["example"].String(),
+			CreatedAt: w["created_at"].String(),
+		},
+		Known: known,
+	}, nil
 }
 
-func (s *sStudyPlanet) WordProgress(r *ghttp.Request) {
-	id := s.idParam(r)
-	var body struct {
-		Known     bool `json:"known"`
-		SessionID int  `json:"session_id"` // 可选：传入则走连击+场次计分
-	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
-	}
+// WordProgress 标记单词掌握状态；session_id 传入则走连击+场次计分。
+func (s *sStudyPlanet) WordProgress(ctx context.Context, req *v1.WordProgressReq) (res *v1.WordProgressRes, err error) {
 	known := 0
-	if body.Known {
+	if req.Known {
 		known = 1
 	}
-	cid := s.resolveChild(r)
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec(
-		`INSERT INTO word_progress(word_id, child_id, known, last_reviewed) VALUES(?,?,?,?)
-		 ON DUPLICATE KEY UPDATE known=VALUES(known), last_reviewed=VALUES(last_reviewed)`,
-		id, cid, known, now,
-	); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if _, err := daoWordProg.Ctx(ctx).Data(doWordProg{
+		WordId:       req.ID,
+		ChildId:      cid,
+		Known:        known,
+		LastReviewed: gtime.Now(),
+	}).Save(); err != nil {
+		return nil, gerror.Wrap(err, "保存掌握状态失败")
 	}
-	if body.SessionID > 0 {
-		correct := body.Known
-		if correct {
-			s.recordAnswer(r, body.SessionID, id, true, 5, "", s.reviewRefs(r, "words", []int{id}))
-		} else {
-			s.recordAnswer(r, body.SessionID, id, false, 5, "", s.reviewRefs(r, "words", []int{id}))
+	res = &v1.WordProgressRes{Known: known}
+	if req.SessionID > 0 {
+		out, err := s.recordAnswer(ctx, cid, req.SessionID, req.ID, req.Known, 5, "",
+			s.reviewRefs(ctx, cid, "words", []int{req.ID}))
+		if err != nil {
+			return nil, err
 		}
-		return
+		fillOutcome(&res.Combo, &res.BasePoints, &res.ComboBonus, &res.Review, &res.XP, &res.Correct, out)
+		return res, nil
 	}
-	if body.Known {
+	if req.Known {
 		s.award(cid, 5, "单词认读:+5")
 	}
-	s.ok(r, map[string]interface{}{"ok": true, "known": known})
+	res.OK = true
+	res.Correct = req.Known
+	return res, nil
 }
 
 // ---------- 语文阅读 ----------
-func (s *sStudyPlanet) ReadingDetail(r *ghttp.Request) {
-	id := s.idParam(r)
-	var rd model.Reading
-	if err := s.DB.Get(&rd, "SELECT id,title,content,level FROM readings WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该阅读")
-		return
+
+// ReadingDetail 阅读详情 + 题目列表。
+func (s *sStudyPlanet) ReadingDetail(ctx context.Context, req *v1.ReadingDetailReq) (res *v1.ReadingDetailRes, err error) {
+	rd, err := daoReadings.Ctx(ctx).Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询阅读失败")
 	}
-	var qs []model.ReadingQuestion
-	if err := s.DB.Select(&qs, "SELECT id,reading_id,question,option_a,option_b,option_c,option_d,answer FROM reading_questions WHERE reading_id=? ORDER BY id", id); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if rd.IsEmpty() {
+		return nil, errNotFound("未找到该阅读")
 	}
-	s.ok(r, map[string]interface{}{"reading": rd, "questions": qs})
+	qs, err := daoReadingQ.Ctx(ctx).Where("reading_id", req.ID).Order("id").All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询阅读题目失败")
+	}
+	res = &v1.ReadingDetailRes{
+		Reading: v1.Reading{
+			ID:      rd["id"].Int(),
+			Title:   rd["title"].String(),
+			Content: rd["content"].String(),
+			Level:   rd["level"].Int(),
+		},
+		Questions: make([]v1.ReadingQuestion, 0, len(qs)),
+	}
+	for _, q := range qs {
+		res.Questions = append(res.Questions, v1.ReadingQuestion{
+			ID:        q["id"].Int(),
+			ReadingID: q["reading_id"].Int(),
+			Question:  q["question"].String(),
+			OptionA:   q["option_a"].String(),
+			OptionB:   q["option_b"].String(),
+			OptionC:   q["option_c"].String(),
+			OptionD:   q["option_d"].String(),
+			Answer:    q["answer"].String(),
+		})
+	}
+	return res, nil
 }
 
-func (s *sStudyPlanet) ReadingAnswer(r *ghttp.Request) {
-	var body struct {
-		QuestionID int    `json:"question_id"`
-		Answer     string `json:"answer"`
-		SessionID  int    `json:"session_id"` // 可选：传入则走连击+场次计分
+// ReadingAnswer 阅读题目作答。
+func (s *sStudyPlanet) ReadingAnswer(ctx context.Context, req *v1.ReadingAnswerReq) (res *v1.ReadingAnswerRes, err error) {
+	q, err := daoReadingQ.Ctx(ctx).Where("id", req.QuestionID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询题目失败")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
+	if q.IsEmpty() {
+		return nil, errNotFound("未找到该题目")
 	}
-	var q model.ReadingQuestion
-	if err := s.DB.Get(&q, "SELECT id,answer FROM reading_questions WHERE id=?", body.QuestionID); err != nil {
-		s.fail(r, 404, "未找到该题目")
-		return
-	}
-	correct := strings.EqualFold(strings.TrimSpace(q.Answer), strings.TrimSpace(body.Answer))
-	if body.SessionID > 0 {
-		s.recordAnswer(r, body.SessionID, body.QuestionID, correct, 2, "", s.reviewRefs(r, "reading", []int{body.QuestionID}))
-		return
+	answer := q["answer"].String()
+	correct := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(req.Answer))
+	res = &v1.ReadingAnswerRes{Correct: correct, CorrectAnswer: answer}
+	if req.SessionID > 0 {
+		cid, err := s.resolveChild(ctx, req.StudentID)
+		if err != nil {
+			return nil, err
+		}
+		out, err := s.recordAnswer(ctx, cid, req.SessionID, req.QuestionID, correct, 2, answer,
+			s.reviewRefs(ctx, cid, "reading", []int{req.QuestionID}))
+		if err != nil {
+			return nil, err
+		}
+		fillOutcome(&res.Combo, &res.BasePoints, &res.ComboBonus, &res.Review, &res.XP, nil, out)
+		return res, nil
 	}
 	if correct {
-		if cid := s.resolveChild(r); cid > 0 {
+		if cid, err := s.resolveChild(ctx, req.StudentID); err == nil && cid > 0 {
 			s.award(cid, 2, "阅读答题:+2")
 		}
 	}
-	s.ok(r, map[string]interface{}{"correct": correct, "correct_answer": q.Answer})
+	return res, nil
 }
 
 // ---------- 数学题目 ----------
-func (s *sStudyPlanet) ListMath(r *ghttp.Request) {
-	level := r.GetQuery("level").String()
-	q := "SELECT id,level,type,question,options,answer,explanation FROM math_problems"
-	args := []interface{}{}
-	if level != "" {
-		q += " WHERE level=?"
-		args = append(args, level)
+
+// ListMath 数学题目列表。
+func (s *sStudyPlanet) ListMath(ctx context.Context, req *v1.ListMathReq) (res *v1.ListMathRes, err error) {
+	m := daoMath.Ctx(ctx).Order("level", "id")
+	if req.Level != "" {
+		m = m.Where("level", req.Level)
 	}
-	q += " ORDER BY level, id"
-	var ps []model.MathProblem
-	if err := s.DB.Select(&ps, q, args...); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	all, err := m.All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询数学题失败")
 	}
-	s.ok(r, ps)
+	out := make(v1.ListMathRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, v1.MathProblem{
+			ID:          r["id"].Int(),
+			Level:       r["level"].Int(),
+			Type:        r["type"].String(),
+			Question:    r["question"].String(),
+			Options:     r["options"].String(),
+			Answer:      r["answer"].String(),
+			Explanation: r["explanation"].String(),
+		})
+	}
+	return &out, nil
 }
 
-func (s *sStudyPlanet) MathAnswer(r *ghttp.Request) {
-	id := s.idParam(r)
-	var body struct {
-		Answer    string `json:"answer"`
-		SessionID int    `json:"session_id"` // 可选：传入则走连击+场次计分
+// MathAnswer 数学题作答。
+func (s *sStudyPlanet) MathAnswer(ctx context.Context, req *v1.MathAnswerReq) (res *v1.MathAnswerRes, err error) {
+	p, err := daoMath.Ctx(ctx).Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询数学题失败")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
+	if p.IsEmpty() {
+		return nil, errNotFound("未找到该题目")
 	}
-	var p model.MathProblem
-	if err := s.DB.Get(&p, "SELECT id,answer,explanation FROM math_problems WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该题目")
-		return
+	answer := p["answer"].String()
+	correct := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(req.Answer))
+	res = &v1.MathAnswerRes{
+		Correct:     correct,
+		Explanation: p["explanation"].String(),
+		Answer:      answer,
 	}
-	correct := strings.EqualFold(strings.TrimSpace(p.Answer), strings.TrimSpace(body.Answer))
-	if body.SessionID > 0 {
-		s.recordAnswer(r, body.SessionID, id, correct, 3, "", s.reviewRefs(r, "math", []int{id}))
-		return
+	if req.SessionID > 0 {
+		cid, err := s.resolveChild(ctx, req.StudentID)
+		if err != nil {
+			return nil, err
+		}
+		out, err := s.recordAnswer(ctx, cid, req.SessionID, req.ID, correct, 3, answer,
+			s.reviewRefs(ctx, cid, "math", []int{req.ID}))
+		if err != nil {
+			return nil, err
+		}
+		fillOutcome(&res.Combo, &res.BasePoints, &res.ComboBonus, &res.Review, &res.XP, nil, out)
+		return res, nil
 	}
 	if correct {
-		if cid := s.resolveChild(r); cid > 0 {
+		if cid, err := s.resolveChild(ctx, req.StudentID); err == nil && cid > 0 {
 			s.award(cid, 3, "数学答题:+3")
 		}
 	}
-	s.ok(r, map[string]interface{}{"correct": correct, "explanation": p.Explanation, "answer": p.Answer})
+	return res, nil
 }
 
 // ---------- 每日任务 ----------
-func (s *sStudyPlanet) ListTasks(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+
+// ListTasks 学生任务列表（按 student_id，公开接口）。
+func (s *sStudyPlanet) ListTasks(ctx context.Context, req *v1.ListTasksReq) (res *v1.ListTasksRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	status := r.GetQuery("status").String()
-	q := "SELECT id,title,type,COALESCE(due_date,'') AS due_date,points,status,created_at,COALESCE(completed_at,'') AS completed_at FROM tasks WHERE child_id=?"
-	args := []interface{}{cid}
-	if status != "" {
-		q += " AND status=?"
-		args = append(args, status)
+	m := daoTasks.Ctx(ctx).Where("child_id", cid)
+	if req.Status != "" {
+		m = m.Where("status", req.Status)
 	}
-	q += " ORDER BY due_date"
-	var tasks []model.Task
-	if err := s.DB.Select(&tasks, q, args...); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	all, err := m.Order("due_date").All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询任务失败")
 	}
-	today := time.Now().Format("2006-01-02")
-	for i := range tasks {
-		if tasks[i].Status != "done" && tasks[i].DueDate != "" && tasks[i].DueDate < today {
-			tasks[i].Status = "overdue"
+	today := todayStr()
+	out := make(v1.ListTasksRes, 0, len(all))
+	for _, r := range all {
+		t := taskOf(r)
+		if t.Status != "done" && t.DueDate != "" && t.DueDate < today {
+			t.Status = "overdue"
 		}
+		out = append(out, t)
 	}
-	s.ok(r, tasks)
+	return &out, nil
 }
 
-func (s *sStudyPlanet) CompleteTask(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+// CompleteTask 完成任务（学生操作，公开接口）。
+func (s *sStudyPlanet) CompleteTask(ctx context.Context, req *v1.CompleteTaskReq) (res *v1.CompleteTaskRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	id := s.idParam(r)
-	var t model.Task
-	if err := s.DB.Get(&t, "SELECT id,points,status FROM tasks WHERE id=? AND child_id=?", id, cid); err != nil {
-		s.fail(r, 404, "未找到该任务")
-		return
+	t, err := daoTasks.Ctx(ctx).Where("id", req.ID).Where("child_id", cid).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询任务失败")
 	}
-	if t.Status == "done" {
-		s.ok(r, map[string]interface{}{"ok": true, "already": true})
-		return
+	if t.IsEmpty() {
+		return nil, errNotFound("未找到该任务")
 	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec("UPDATE tasks SET status='done', completed_at=? WHERE id=?", now, id); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if t["status"].String() == "done" {
+		return &v1.CompleteTaskRes{OK: true, Already: true}, nil
 	}
-	s.award(cid, t.Points, "完成任务:"+strconv.Itoa(t.Points))
-	s.ok(r, map[string]interface{}{"ok": true})
+	if _, err := daoTasks.Ctx(ctx).Where("id", req.ID).Data(doTasks{
+		Status:      "done",
+		CompletedAt: gtime.Now(),
+	}).Update(); err != nil {
+		return nil, gerror.Wrap(err, "更新任务失败")
+	}
+	points := t["points"].Int()
+	s.award(cid, points, "完成任务:+"+g.NewVar(points).String())
+	return &v1.CompleteTaskRes{OK: true}, nil
 }
 
 // ---------- 积分 ----------
-func (s *sStudyPlanet) PointsSummary(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+
+// PointsSummary 积分汇总（公开接口）。
+func (s *sStudyPlanet) PointsSummary(ctx context.Context, req *v1.PointsSummaryReq) (res *v1.PointsSummaryRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	var total int
-	if err := s.DB.Get(&total, "SELECT COALESCE(SUM(delta),0) FROM points_log WHERE child_id=?", cid); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	total, err := s.pointsTotal(ctx, cid)
+	if err != nil {
+		return nil, err
 	}
-	today := time.Now().Format("2006-01-02")
-	var todayEarned int
-	if err := s.DB.Get(&todayEarned, "SELECT COALESCE(SUM(delta),0) FROM points_log WHERE child_id=? AND DATE(created_at)=?", cid, today); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	v, err := daoPointsLog.Ctx(ctx).
+		Fields("COALESCE(SUM(delta),0) AS total").
+		Where("child_id", cid).
+		Where("DATE(created_at)=?", todayStr()).Value()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询今日积分失败")
 	}
-	s.ok(r, map[string]interface{}{"total": total, "today_earned": todayEarned, "student_id": cid})
+	return &v1.PointsSummaryRes{Total: total, TodayEarned: v.Int(), StudentID: cid}, nil
 }
 
-func (s *sStudyPlanet) PointsLog(r *ghttp.Request) {
-	cid := s.resolveChild(r)
+// PointsLog 积分流水（最近 100 条，公开接口）。
+func (s *sStudyPlanet) PointsLog(ctx context.Context, req *v1.PointsLogReq) (res *v1.PointsLogRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	var logs []model.PointsLog
-	if err := s.DB.Select(&logs, "SELECT id,child_id,delta,reason,created_at FROM points_log WHERE child_id=? ORDER BY id DESC LIMIT 100", cid); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	all, err := daoPointsLog.Ctx(ctx).Where("child_id", cid).OrderDesc("id").Limit(100).All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询积分流水失败")
 	}
-	s.ok(r, logs)
+	out := make(v1.PointsLogRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, v1.PointsLogItem{
+			ID:        r["id"].Int(),
+			ChildID:   r["child_id"].Int(),
+			Delta:     r["delta"].Int(),
+			Reason:    r["reason"].String(),
+			CreatedAt: r["created_at"].String(),
+		})
+	}
+	return &out, nil
 }
 
 // ---------- 奖励 / 兑换 ----------
-func (s *sStudyPlanet) ListRewards(r *ghttp.Request) {
-	var rs []model.Reward
-	if err := s.DB.Select(&rs, "SELECT id,name,cost_points,status FROM rewards ORDER BY cost_points"); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+
+// ListRewards 奖励列表（公开接口）。
+func (s *sStudyPlanet) ListRewards(ctx context.Context, req *v1.ListRewardsReq) (res *v1.ListRewardsRes, err error) {
+	all, err := daoRewards.Ctx(ctx).Order("cost_points").All()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询奖励失败")
 	}
-	s.ok(r, rs)
+	out := make(v1.ListRewardsRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, v1.Reward{
+			ID:         r["id"].Int(),
+			Name:       r["name"].String(),
+			CostPoints: r["cost_points"].Int(),
+			Status:     r["status"].String(),
+		})
+	}
+	return &out, nil
 }
 
-func (s *sStudyPlanet) Redeem(r *ghttp.Request) {
-	id := s.idParam(r)
-	var rw model.Reward
-	if err := s.DB.Get(&rw, "SELECT id,name,cost_points,status FROM rewards WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该奖励")
-		return
+// Redeem 学生兑换奖励（公开接口，需家长确认）。
+func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.RedeemRes, err error) {
+	rw, err := daoRewards.Ctx(ctx).Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询奖励失败")
 	}
-	if rw.Status != "active" {
-		s.fail(r, 400, "该奖励暂不可用")
-		return
+	if rw.IsEmpty() {
+		return nil, errNotFound("未找到该奖励")
 	}
-	cid := s.resolveChild(r)
+	if rw["status"].String() != "active" {
+		return nil, errParam("该奖励暂不可用")
+	}
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
 	if cid < 0 {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	var total int
-	if err := s.DB.Get(&total, "SELECT COALESCE(SUM(delta),0) FROM points_log WHERE child_id=?", cid); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	total, err := s.pointsTotal(ctx, cid)
+	if err != nil {
+		return nil, err
 	}
-	if total < rw.CostPoints {
-		s.fail(r, 400, "积分不足")
-		return
+	if total < rw["cost_points"].Int() {
+		return nil, errParam("积分不足")
 	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec("INSERT INTO redemptions(reward_id,status,requested_at,child_id) VALUES(?, 'pending', ?, ?)", id, now, cid); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if _, err := daoRedempt.Ctx(ctx).Data(doRedempt{
+		RewardId:    req.ID,
+		ChildId:     cid,
+		Status:      "pending",
+		RequestedAt: gtime.Now(),
+	}).Insert(); err != nil {
+		return nil, gerror.Wrap(err, "提交兑换失败")
 	}
-	s.ok(r, map[string]interface{}{"ok": true, "pending": true, "message": "已提交兑换，等待家长确认"})
+	return &v1.RedeemRes{OK: true, Pending: true, Message: "已提交兑换，等待家长确认"}, nil
 }
 
 // ---------- 家长端 ----------
-func (s *sStudyPlanet) ParentLogin(r *ghttp.Request) {
+
+// ParentLogin 家长 PIN 登录（Casdoor 启用时禁用）。
+func (s *sStudyPlanet) ParentLogin(ctx context.Context, req *v1.ParentLoginReq) (res *v1.ParentLoginRes, err error) {
 	// Casdoor 已配置时禁用 PIN 登录，强制走 SSO
-	if s.Cfg.Casdoor.Enabled() {
-		s.fail(r, http.StatusBadRequest, "已启用 Casdoor 登录，请使用 SSO")
-		return
+	if s.Cfg != nil && s.Cfg.Casdoor.Enabled() {
+		return nil, errAuth("已启用 Casdoor 登录，请使用 SSO")
 	}
-	var body struct {
-		Pin string `json:"pin"`
+	rec, err := daoSettings.Ctx(ctx).Where("key", "parent_pin").One()
+	if err != nil || rec.IsEmpty() {
+		return nil, errAuth("PIN 未设置")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
+	if !checkPin(rec["value"].String(), req.Pin) {
+		return nil, errAuth("密码错误")
 	}
-	var hash string
-	if err := s.DB.Get(&hash, "SELECT value FROM settings WHERE `key`='parent_pin'"); err != nil {
-		s.fail(r, 500, "PIN 未设置")
-		return
+	secret := ""
+	if s.Cfg != nil {
+		secret = s.Cfg.Parent.JWTSecret
 	}
-	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(body.Pin)) != nil {
-		s.fail(r, http.StatusUnauthorized, "密码错误")
-		return
-	}
-	tok, err := issueToken(s.Cfg.Parent.JWTSecret, "家长")
+	tok, err := issueToken(secret, "家长")
 	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, gerror.Wrap(err, "签发令牌失败")
 	}
-	s.ok(r, map[string]interface{}{"token": tok})
+	return &v1.ParentLoginRes{Token: tok}, nil
 }
 
 // ---------- 以下为家长鉴权后接口 ----------
-func (s *sStudyPlanet) AddTask(r *ghttp.Request) {
-	var body struct {
-		Title     string `json:"title"`
-		Type      string `json:"type"`
-		DueDate   string `json:"due_date"`
-		Points    int    `json:"points"`
-		StudentID int    `json:"student_id"`
+
+// AddTask 发布任务（家长鉴权）。
+func (s *sStudyPlanet) AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1.AddTaskRes, err error) {
+	if strings.TrimSpace(req.Title) == "" {
+		return nil, errParam("请填写任务名称")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
+	data := doTasks{
+		Title:   req.Title,
+		Type:    req.Type,
+		Points:  req.Points,
+		Status:  "pending",
+		ChildId: req.StudentID,
 	}
-	if body.Title == "" {
-		s.fail(r, 400, "请填写任务名称")
-		return
+	// due_date 为空时留空（MySQL DATE 列不接受空字符串）
+	if strings.TrimSpace(req.DueDate) != "" {
+		if t, err := gtime.StrToTime(req.DueDate, "Y-m-d"); err == nil {
+			data.DueDate = t
+		} else {
+			data.DueDate = gtime.NewFromStr(req.DueDate)
+		}
 	}
-	// due_date 为空时写 NULL（MySQL DATE 列不接受空字符串）
-	var dueDate interface{}
-	if strings.TrimSpace(body.DueDate) == "" {
-		dueDate = nil
-	} else {
-		dueDate = body.DueDate
+	if _, err := daoTasks.Ctx(ctx).Data(data).Insert(); err != nil {
+		return nil, gerror.Wrap(err, "发布任务失败")
 	}
-	if _, err := daoTasks.Ctx(ctxOf()).Data(g.Map{
-		"title": body.Title, "type": body.Type, "due_date": dueDate,
-		"points": body.Points, "status": "pending", "child_id": body.StudentID,
+	return &v1.AddTaskRes{OK: true}, nil
+}
+
+// DeleteTask 删除任务（家长鉴权）。
+func (s *sStudyPlanet) DeleteTask(ctx context.Context, req *v1.DeleteTaskReq) (res *v1.DeleteTaskRes, err error) {
+	if _, err := daoTasks.Ctx(ctx).Where("id", req.ID).Delete(); err != nil {
+		return nil, gerror.Wrap(err, "删除任务失败")
+	}
+	return &v1.DeleteTaskRes{OK: true}, nil
+}
+
+// AddReward 添加奖励（家长鉴权）。
+func (s *sStudyPlanet) AddReward(ctx context.Context, req *v1.AddRewardReq) (res *v1.AddRewardRes, err error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errParam("请填写奖励名称")
+	}
+	if _, err := daoRewards.Ctx(ctx).Data(doRewards{
+		Name:       req.Name,
+		CostPoints: req.CostPoints,
+		Status:     "active",
 	}).Insert(); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, gerror.Wrap(err, "添加奖励失败")
 	}
-	s.ok(r, map[string]interface{}{"ok": true})
+	return &v1.AddRewardRes{OK: true}, nil
 }
 
-func (s *sStudyPlanet) DeleteTask(r *ghttp.Request) {
-	id := s.idParam(r)
-	if _, err := daoTasks.Ctx(ctxOf()).Where("id", id).Delete(); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, map[string]interface{}{"ok": true})
-}
-
-func (s *sStudyPlanet) AddReward(r *ghttp.Request) {
-	var body struct {
-		Name       string `json:"name"`
-		CostPoints int    `json:"cost_points"`
-	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
-	}
-	if body.Name == "" {
-		s.fail(r, 400, "请填写奖励名称")
-		return
-	}
-	if _, err := daoRewards.Ctx(ctxOf()).Data(g.Map{
-		"name": body.Name, "cost_points": body.CostPoints, "status": "active",
-	}).Insert(); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, map[string]interface{}{"ok": true})
-}
-
-func (s *sStudyPlanet) ConfirmRedemption(r *ghttp.Request) {
-	id := s.idParam(r)
-	var rd model.Redemption
-	if err := s.DB.Get(&rd, "SELECT id,reward_id,status FROM redemptions WHERE id=?", id); err != nil {
-		s.fail(r, 404, "未找到该兑换")
-		return
-	}
-	if rd.Status != "pending" {
-		s.fail(r, 400, "该兑换不在待确认状态")
-		return
-	}
-	var rw model.Reward
-	if err := s.DB.Get(&rw, "SELECT id,name,cost_points FROM rewards WHERE id=?", rd.RewardID); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	now := time.Now().Format("2006-01-02 15:04:05")
-	if _, err := s.DB.Exec("UPDATE redemptions SET status='confirmed', confirmed_at=? WHERE id=?", now, id); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	if _, err := s.DB.Exec("UPDATE rewards SET status='redeemed' WHERE id=?", rd.RewardID); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.award(rd.ChildID, -rw.CostPoints, "兑换:"+rw.Name)
-	s.ok(r, map[string]interface{}{"ok": true})
-}
-
-func (s *sStudyPlanet) SetPin(r *ghttp.Request) {
-	var body struct {
-		Pin string `json:"pin"`
-	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
-	}
-	if len(body.Pin) < 4 {
-		s.fail(r, 400, "PIN 至少 4 位")
-		return
-	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(body.Pin), 10)
+// ConfirmRedemption 家长确认兑换（家长鉴权）。
+func (s *sStudyPlanet) ConfirmRedemption(ctx context.Context, req *v1.ConfirmRedemptionReq) (res *v1.ConfirmRedemptionRes, err error) {
+	rd, err := daoRedempt.Ctx(ctx).Where("id", req.ID).One()
 	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, gerror.Wrap(err, "查询兑换失败")
 	}
-	if _, err := g.DB().Model("settings").Ctx(ctxOf()).
-		Data(g.Map{"key": "parent_pin", "value": string(hash)}).
-		OnConflict("key").Save(); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+	if rd.IsEmpty() {
+		return nil, errNotFound("未找到该兑换")
 	}
-	s.ok(r, map[string]interface{}{"ok": true})
+	if rd["status"].String() != "pending" {
+		return nil, errAuth("该兑换不在待确认状态")
+	}
+	rw, err := daoRewards.Ctx(ctx).Where("id", rd["reward_id"]).One()
+	if err != nil || rw.IsEmpty() {
+		return nil, errNotFound("未找到对应奖励")
+	}
+	if _, err := daoRedempt.Ctx(ctx).Where("id", req.ID).Data(doRedempt{
+		Status:      "confirmed",
+		ConfirmedAt: gtime.Now(),
+	}).Update(); err != nil {
+		return nil, gerror.Wrap(err, "确认兑换失败")
+	}
+	if _, err := daoRewards.Ctx(ctx).Where("id", rd["reward_id"]).Data(doRewards{
+		Status: "redeemed",
+	}).Update(); err != nil {
+		return nil, gerror.Wrap(err, "更新奖励状态失败")
+	}
+	s.award(rd["child_id"].Int(), -rw["cost_points"].Int(), "兑换:"+rw["name"].String())
+	return &v1.ConfirmRedemptionRes{OK: true}, nil
+}
+
+// SetPin 修改家长 PIN（家长鉴权）。
+func (s *sStudyPlanet) SetPin(ctx context.Context, req *v1.SetPinReq) (res *v1.SetPinRes, err error) {
+	if len(req.Pin) < 4 {
+		return nil, errParam("PIN 至少 4 位")
+	}
+	hash, err := hashPin(req.Pin)
+	if err != nil {
+		return nil, gerror.Wrap(err, "PIN 加密失败")
+	}
+	if _, err := daoSettings.Ctx(ctx).Data(doSettings{
+		Key:   "parent_pin",
+		Value: hash,
+	}).Save(); err != nil {
+		return nil, gerror.Wrap(err, "保存 PIN 失败")
+	}
+	return &v1.SetPinRes{OK: true}, nil
 }
 
 // ---------- 学生账号管理（家长鉴权后） ----------
+
 // ListStudents 全部学生（家长切换用）。
-func (s *sStudyPlanet) ListStudents(r *ghttp.Request) {
-	ctx := ctxOf()
-	var st []model.Student
-	err := daoChildren.Ctx(ctx).Order("id").Scan(&st)
+func (s *sStudyPlanet) ListStudents(ctx context.Context, req *v1.ListStudentsReq) (res *v1.ListStudentsRes, err error) {
+	all, err := daoChildren.Ctx(ctx).Order("id").All()
 	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, gerror.Wrap(err, "查询学生失败")
 	}
-	s.ok(r, st)
+	out := make(v1.ListStudentsRes, 0, len(all))
+	for _, r := range all {
+		out = append(out, studentOf(r))
+	}
+	return &out, nil
 }
 
 // CreateStudent 新建学生账号。
-func (s *sStudyPlanet) CreateStudent(r *ghttp.Request) {
-	var body struct {
-		Name     string `json:"name"`
-		Username string `json:"username"`
-		Avatar   string `json:"avatar"`
-		Grade    int    `json:"grade"`
+func (s *sStudyPlanet) CreateStudent(ctx context.Context, req *v1.CreateStudentReq) (res *v1.CreateStudentRes, err error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errParam("请填写学生姓名")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
+	avatar, grade := req.Avatar, req.Grade
+	if avatar == "" {
+		avatar = "🚀"
 	}
-	if body.Name == "" {
-		s.fail(r, 400, "请填写学生姓名")
-		return
+	if grade <= 0 {
+		grade = 5
 	}
-	if body.Avatar == "" {
-		body.Avatar = "🚀"
-	}
-	if body.Grade <= 0 {
-		body.Grade = 5
-	}
-	ctx := ctxOf()
-	if body.Username != "" {
-		cnt, err := daoChildren.Ctx(ctx).Where("username", body.Username).Count()
+	if req.Username != "" {
+		cnt, err := daoChildren.Ctx(ctx).Where("username", req.Username).Count()
 		if err != nil {
-			s.fail(r, 500, err.Error())
-			return
+			return nil, gerror.Wrap(err, "校验用户名失败")
 		}
 		if cnt > 0 {
-			s.fail(r, 400, "用户名已被使用")
-			return
+			return nil, errParam("用户名已被使用")
 		}
 	}
-	res, err := daoChildren.Ctx(ctx).Data(g.Map{
-		"name": body.Name, "username": body.Username, "avatar": body.Avatar, "grade": body.Grade,
-	}).Insert()
+	id, err := daoChildren.Ctx(ctx).Data(doChildren{
+		Name:     req.Name,
+		Username: req.Username,
+		Avatar:   avatar,
+		Grade:    grade,
+	}).InsertAndGetId()
 	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
+		return nil, gerror.Wrap(err, "创建学生失败")
 	}
-	newID, err := res.LastInsertId()
-	if err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	var st model.Student
-	rec, err := daoChildren.Ctx(ctx).Where("id", newID).One()
+	rec, err := daoChildren.Ctx(ctx).Where("id", id).One()
 	if err != nil || rec.IsEmpty() {
-		s.fail(r, 500, "查询新学生失败")
-		return
+		return nil, errNotFound("查询新学生失败")
 	}
-	if err := rec.Struct(&st); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, st)
+	st := v1.CreateStudentRes(studentOf(rec))
+	return &st, nil
 }
 
 // UpdateStudent 修改学生信息（姓名/头像/年级/用户名）。
-func (s *sStudyPlanet) UpdateStudent(r *ghttp.Request) {
-	id := s.idParam(r)
-	var body struct {
-		Name     *string `json:"name"`
-		Username *string `json:"username"`
-		Avatar   *string `json:"avatar"`
-		Grade    *int    `json:"grade"`
+func (s *sStudyPlanet) UpdateStudent(ctx context.Context, req *v1.UpdateStudentReq) (res *v1.UpdateStudentRes, err error) {
+	if req.Name != nil && *req.Name == "" {
+		return nil, errParam("姓名不能为空")
 	}
-	if err := r.Parse(&body); err != nil {
-		s.fail(r, 400, "请求格式错误")
-		return
-	}
-	if body.Name != nil && *body.Name == "" {
-		s.fail(r, 400, "姓名不能为空")
-		return
-	}
-	ctx := ctxOf()
-	if body.Username != nil && *body.Username != "" {
-		cnt, err := daoChildren.Ctx(ctx).Where("username", *body.Username).Where("id<>?", id).Count()
+	if req.Username != nil && *req.Username != "" {
+		cnt, err := daoChildren.Ctx(ctx).Where("username", *req.Username).Where("id<>?", req.ID).Count()
 		if err != nil {
-			s.fail(r, 500, err.Error())
-			return
+			return nil, gerror.Wrap(err, "校验用户名失败")
 		}
 		if cnt > 0 {
-			s.fail(r, 400, "用户名已被使用")
-			return
+			return nil, errParam("用户名已被使用")
 		}
 	}
-	update := g.Map{}
-	if body.Name != nil {
-		update["name"] = *body.Name
+	data := g.Map{}
+	if req.Name != nil {
+		data["name"] = *req.Name
 	}
-	if body.Username != nil {
-		update["username"] = *body.Username
+	if req.Username != nil {
+		data["username"] = *req.Username
 	}
-	if body.Avatar != nil {
-		update["avatar"] = *body.Avatar
+	if req.Avatar != nil {
+		data["avatar"] = *req.Avatar
 	}
-	if body.Grade != nil {
-		update["grade"] = *body.Grade
+	if req.Grade != nil {
+		data["grade"] = *req.Grade
 	}
-	if len(update) > 0 {
-		if _, err := daoChildren.Ctx(ctx).Where("id", id).Data(update).Update(); err != nil {
-			s.fail(r, 500, err.Error())
-			return
+	if len(data) > 0 {
+		if _, err := daoChildren.Ctx(ctx).Where("id", req.ID).Data(data).Update(); err != nil {
+			return nil, gerror.Wrap(err, "更新学生失败")
 		}
 	}
-	var st model.Student
-	rec, err := daoChildren.Ctx(ctx).Where("id", id).One()
+	rec, err := daoChildren.Ctx(ctx).Where("id", req.ID).One()
 	if err != nil || rec.IsEmpty() {
-		s.fail(r, 404, "学生不存在")
-		return
+		return nil, errNotFound("学生不存在")
 	}
-	if err := rec.Struct(&st); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, st)
+	st := v1.UpdateStudentRes(studentOf(rec))
+	return &st, nil
 }
 
 // DeleteStudent 删除学生；至少保留一个，且清空其学习数据。
-func (s *sStudyPlanet) DeleteStudent(r *ghttp.Request) {
-	id := s.idParam(r)
-	var cnt int
-	if err := s.DB.Get(&cnt, "SELECT COUNT(*) FROM children"); err != nil {
-		s.fail(r, 500, err.Error())
-		return
+func (s *sStudyPlanet) DeleteStudent(ctx context.Context, req *v1.DeleteStudentReq) (res *v1.DeleteStudentRes, err error) {
+	cnt, err := daoChildren.Ctx(ctx).Count()
+	if err != nil {
+		return nil, gerror.Wrap(err, "统计学生失败")
 	}
 	if cnt <= 1 {
-		s.fail(r, 400, "至少保留一个学生账号")
-		return
+		return nil, errParam("至少保留一个学生账号")
 	}
-	for _, q := range []string{
-		"DELETE FROM word_progress WHERE child_id=?",
-		"DELETE FROM points_log WHERE child_id=?",
-		"DELETE FROM tasks WHERE child_id=?",
-		"DELETE FROM redemptions WHERE child_id=?",
-	} {
-		if _, err := s.DB.Exec(q, id); err != nil {
-			s.fail(r, 500, err.Error())
-			return
+	err = g.DB().Transaction(ctx, func(ctx context.Context, tx gdb.TX) error {
+		// 先清场次答题（依赖 session_id），再清其余学习数据，最后删学生
+		if _, err := tx.Exec("DELETE FROM session_answers WHERE session_id IN (SELECT id FROM practice_sessions WHERE child_id=?)", req.ID); err != nil {
+			return err
 		}
+		for _, d := range []*gdb.Model{
+			daoWrongQ.Ctx(ctx).Where("child_id", req.ID),
+			daoSessions.Ctx(ctx).Where("child_id", req.ID),
+			daoWordProg.Ctx(ctx).Where("child_id", req.ID),
+			daoPointsLog.Ctx(ctx).Where("child_id", req.ID),
+			daoTasks.Ctx(ctx).Where("child_id", req.ID),
+			daoRedempt.Ctx(ctx).Where("child_id", req.ID),
+			daoChildren.Ctx(ctx).Where("id", req.ID),
+		} {
+			if _, err := d.Delete(); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, gerror.Wrap(err, "删除学生失败")
 	}
-	if _, err := s.DB.Exec("DELETE FROM children WHERE id=?", id); err != nil {
-		s.fail(r, 500, err.Error())
-		return
-	}
-	s.ok(r, map[string]interface{}{"ok": true})
-}
-
-// ---------- JWT ----------
-func issueToken(secret, name string) (string, error) {
-	// 会话没有固定过期时间：前端将 token 持久化到 localStorage，
-	// 只有家长主动退出（或更换 JWT_SECRET）才会结束登录状态。
-	claims := jwt.MapClaims{
-		"sub":  "parent",
-		"name": name,
-	}
-	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return t.SignedString([]byte(secret))
-}
-
-// init 业务实现注册：service 层接口 IStudyPlanet ← logic 实现绑定（gf gen service 规范）。
-func init() {
-	service.RegisterStudyPlanet(local)
+	return &v1.DeleteStudentRes{OK: true}, nil
 }

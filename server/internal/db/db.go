@@ -140,19 +140,3 @@ func Migrate(driver, dsn string) error {
 	}
 	return nil
 }
-
-// Open 打开数据库连接池。
-func Open(driver, dsn string) (*sqlx.DB, error) {
-	if !strings.EqualFold(driver, "mysql") {
-		return nil, fmt.Errorf("db: 仅支持 MySQL（配置的驱动为 %s）", driver)
-	}
-	db, err := sqlx.Open("mysql", dsn)
-	if err != nil {
-		return nil, err
-	}
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
-}

@@ -66,7 +66,29 @@ const units = computed(() => {
 });
 function gradeLabel(g) { const opt = gradeOptions.find(x => x.value === (g || 1)); return opt ? opt.label : `${g || 1}年级`; }
 function wrongSubject() { const order = ["math", "english", "chinese", "physics", "chemistry", "biology", "history", "geography"]; for (const s of order) { const u = subjects.value.find(x => x.code === s); if (u && u.count > 0) return s; } return "math"; }
-function api(path, options = {}) { const sep = path.includes("?") ? "&" : "?"; const headers = { "Content-Type": "application/json", ...(options.headers || {}) }; if (parentToken.value) headers.Authorization = `Bearer ${parentToken.value}`; return fetch(`${API}${path}${options.child === false ? "" : `${sep}student_id=${currentStudent.value}`}`, { ...options, headers, body: options.body ? JSON.stringify(options.body) : undefined }).then(async r => { const data = await r.json().catch(() => null); if (r.status === 401 && parentToken.value) { parentToken.value = ""; localStorage.removeItem("sp_parent_jwt"); canAdmin.value = false; sessionStorage.removeItem("sp_admin"); view.value = "home"; showLogin.value = true; } if (!r.ok) throw new Error(data?.error || `请求失败（${r.status}）`); return data; }); }
+function api(path, options = {}) {
+  const sep = path.includes("?") ? "&" : "?";
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (parentToken.value) headers.Authorization = `Bearer ${parentToken.value}`;
+  return fetch(`${API}${path}${options.child === false ? "" : `${sep}student_id=${currentStudent.value}`}`, {
+    ...options, headers, body: options.body ? JSON.stringify(options.body) : undefined
+  }).then(async r => {
+    const data = await r.json().catch(() => null);
+    // 401：JWT 失效，清理家长态回到学生模式
+    if (r.status === 401 && parentToken.value) {
+      parentToken.value = ""; localStorage.removeItem("sp_parent_jwt");
+      canAdmin.value = false; sessionStorage.removeItem("sp_admin");
+      view.value = "home"; showLogin.value = true;
+    }
+    // GF 标准响应：{code, message, data}，code !== 0 视为失败
+    if (data && typeof data.code === "number") {
+      if (data.code !== 0) throw new Error(data.message || `请求失败（${r.status}）`);
+      return data.data;
+    }
+    if (!r.ok) throw new Error(data?.message || data?.error || `请求失败（${r.status}）`);
+    return data;
+  });
+}
 function fail(e) { error.value = e.message || String(e); }
 function shuffle(a) { return [...a].sort(() => Math.random() - .5); }
 function starCount(u) { return sessions.value.filter(x => x.subject === u.kind && x.level === 1).reduce((b, x) => Math.max(b, x.stars || 0), 0); }

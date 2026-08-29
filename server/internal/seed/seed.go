@@ -1,26 +1,27 @@
 package seed
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
 
-	"github.com/jmoiron/sqlx"
+	"github.com/gogf/gf/v2/database/gdb"
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Run 在空库时写入五年级示例数据（单词/阅读/数学/任务含逾期/奖励/默认孩子/PIN）。
 // 幂等：children 已有数据则直接返回。
-func Run(db *sqlx.DB, pin string) error {
-	var cnt int
-	if err := db.Get(&cnt, "SELECT COUNT(*) FROM children"); err != nil {
+func Run(ctx context.Context, db gdb.DB, pin string) error {
+	cnt, err := db.Model("children").Ctx(ctx).Count()
+	if err != nil {
 		return fmt.Errorf("check children: %w", err)
 	}
 	if cnt > 0 {
 		return nil
 	}
 
-	if _, err := db.Exec("INSERT INTO children(name) VALUES(?)", "小朋友"); err != nil {
+	if _, err := db.Exec(ctx, "INSERT INTO children(name) VALUES(?)", "小朋友"); err != nil {
 		return err
 	}
 
@@ -38,7 +39,7 @@ func Run(db *sqlx.DB, pin string) error {
 		{"exercise", "练习", "/ˈeksəsaɪz/", "Do exercise every morning."},
 	}
 	for _, w := range words {
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			"INSERT INTO words(level,word,meaning,phonetic,example) VALUES(?,?,?,?,?)",
 			5, w[0], w[1], w[2], w[3],
 		); err != nil {
@@ -48,18 +49,18 @@ func Run(db *sqlx.DB, pin string) error {
 
 	// ---- 语文阅读（寓言）----
 	tortoise := "乌龟和兔子赛跑，兔子跑得很快，中途骄傲地睡了一觉；乌龟一步一步坚持爬，最终先到终点。故事告诉我们：骄傲使人落后，坚持就是胜利。"
-	if _, err := db.Exec("INSERT INTO readings(title,content,level) VALUES(?,?,?)", "龟兔赛跑", tortoise, 5); err != nil {
+	if _, err := db.Exec(ctx, "INSERT INTO readings(title,content,level) VALUES(?,?,?)", "龟兔赛跑", tortoise, 5); err != nil {
 		return err
 	}
-	var rid1 int
-	if err := db.Get(&rid1, "SELECT id FROM readings WHERE title=?", "龟兔赛跑"); err != nil {
+	rid1, err := db.GetValue(ctx, "SELECT id FROM readings WHERE title=?", "龟兔赛跑")
+	if err != nil {
 		return err
 	}
 	for _, q := range [][6]string{
 		{"兔子为什么输了比赛？", "它跑得太慢", "它骄傲睡觉", "它迷路了", "它受伤了", "它骄傲睡觉"},
 		{"这个故事告诉我们什么？", "要聪明", "坚持就能胜利", "要跑得快", "要睡觉", "坚持就能胜利"},
 	} {
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			"INSERT INTO reading_questions(reading_id,question,option_a,option_b,option_c,option_d,answer) VALUES(?,?,?,?,?,?,?)",
 			rid1, q[0], q[1], q[2], q[3], q[4], q[5],
 		); err != nil {
@@ -68,18 +69,18 @@ func Run(db *sqlx.DB, pin string) error {
 	}
 
 	tree := "一个农夫偶然捡到一只撞死在树桩上的兔子，便放下农活天天守着树桩等兔子，结果庄稼荒废，再也没等到兔子。比喻不知变通、妄想不劳而获。"
-	if _, err := db.Exec("INSERT INTO readings(title,content,level) VALUES(?,?,?)", "守株待兔", tree, 5); err != nil {
+	if _, err := db.Exec(ctx, "INSERT INTO readings(title,content,level) VALUES(?,?,?)", "守株待兔", tree, 5); err != nil {
 		return err
 	}
-	var rid2 int
-	if err := db.Get(&rid2, "SELECT id FROM readings WHERE title=?", "守株待兔"); err != nil {
+	rid2, err := db.GetValue(ctx, "SELECT id FROM readings WHERE title=?", "守株待兔")
+	if err != nil {
 		return err
 	}
 	for _, q := range [][6]string{
 		{"农夫为什么再也等不到兔子？", "兔子变聪明了", "兔子不会总撞树", "他搬家了", "天气变了", "兔子不会总撞树"},
 		{"这个成语讽刺了哪种人？", "勤劳的人", "妄想不劳而获的人", "勇敢的人", "聪明的人", "妄想不劳而获的人"},
 	} {
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			"INSERT INTO reading_questions(reading_id,question,option_a,option_b,option_c,option_d,answer) VALUES(?,?,?,?,?,?,?)",
 			rid2, q[0], q[1], q[2], q[3], q[4], q[5],
 		); err != nil {
@@ -95,7 +96,7 @@ func Run(db *sqlx.DB, pin string) error {
 		{"计算：1/2 + 1/4 = ?", "3/4", "2/3", "1/2", "1", "3/4", "通分：2/4+1/4=3/4"},
 	} {
 		opts := `["` + m[1] + `","` + m[2] + `","` + m[3] + `","` + m[4] + `"]`
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			"INSERT INTO math_problems(level,type,question,options,answer,explanation) VALUES(?,?,?,?,?,?)",
 			5, "计算", m[0], opts, m[5], m[6],
 		); err != nil {
@@ -112,7 +113,7 @@ func Run(db *sqlx.DB, pin string) error {
 		{"读一篇语文课文", "语文", yesterday, "10"},
 	} {
 		pts, _ := strconv.Atoi(t[3])
-		if _, err := db.Exec(
+		if _, err := db.Exec(ctx,
 			"INSERT INTO tasks(title,type,due_date,points,status) VALUES(?,?,?,?,'pending')",
 			t[0], t[1], t[2], pts,
 		); err != nil {
@@ -127,7 +128,7 @@ func Run(db *sqlx.DB, pin string) error {
 		{"周末去公园玩", "100"},
 	} {
 		cost, _ := strconv.Atoi(rw[1])
-		if _, err := db.Exec("INSERT INTO rewards(name,cost_points,status) VALUES(?,?,'active')", rw[0], cost); err != nil {
+		if _, err := db.Exec(ctx, "INSERT INTO rewards(name,cost_points,status) VALUES(?,?,'active')", rw[0], cost); err != nil {
 			return err
 		}
 	}
@@ -137,7 +138,7 @@ func Run(db *sqlx.DB, pin string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = db.Exec("INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash), string(hash)); err != nil {
+	if _, err = db.Exec(ctx, "INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash), string(hash)); err != nil {
 		return err
 	}
 

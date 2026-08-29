@@ -20,25 +20,28 @@ type PracticeSession struct {
 
 // CreateSessionReq 开启一关。
 type CreateSessionReq struct {
-	g.Meta  `path:"/sessions" method:"post" tags:"Practice" summary:"开始练习场次"`
-	Subject string `json:"subject" v:"required"`
-	Level   int    `json:"level"`
-	Total   int    `json:"total"`
+	g.Meta    `path:"/sessions" method:"post" tags:"Practice" summary:"开始练习场次"`
+	StudentID int    `json:"student_id" in:"query"`
+	Subject   string `json:"subject" v:"required"`
+	Level     int    `json:"level"`
+	Total     int    `json:"total"`
 }
 type CreateSessionRes PracticeSession
 
 // ListSessionsReq 学生最近练习记录（可选按 level/subject 过滤）。
 type ListSessionsReq struct {
-	g.Meta  `path:"/sessions" method:"get" tags:"Practice" summary:"练习记录"`
-	Level   string `json:"level" in:"query"`
-	Subject string `json:"subject" in:"query"`
+	g.Meta    `path:"/sessions" method:"get" tags:"Practice" summary:"练习记录"`
+	StudentID int    `json:"student_id" in:"query"`
+	Level     string `json:"level" in:"query"`
+	Subject   string `json:"subject" in:"query"`
 }
 type ListSessionsRes []PracticeSession
 
 // FinishSessionReq 结算一关（同一关只结算一次；按正确率给星级与奖励）。
 type FinishSessionReq struct {
-	g.Meta `path:"/sessions/:id/finish" method:"post" tags:"Practice" summary:"结算练习"`
-	ID     int `in:"path" json:"-"`
+	g.Meta    `path:"/sessions/:id/finish" method:"post" tags:"Practice" summary:"结算练习"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type FinishSessionRes struct {
 	Stars     int `json:"stars"`

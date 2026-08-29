@@ -13,8 +13,9 @@ type LeaderboardEntry struct {
 
 // WeeklyLeaderboardReq 每周经验排行榜（当前 ISO 周）。
 type WeeklyLeaderboardReq struct {
-	g.Meta `path:"/leaderboard/weekly" method:"get" tags:"Leaderboard" summary:"周经验排行榜"`
-	Limit  int `json:"limit" in:"query"`
+	g.Meta    `path:"/leaderboard/weekly" method:"get" tags:"Leaderboard" summary:"周经验排行榜"`
+	Limit     int `json:"limit" in:"query"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type WeeklyLeaderboardRes struct {
 	Week    string             `json:"week"`
@@ -39,7 +40,8 @@ type WrongQuestion struct {
 
 // ListWrongQuestionsReq 学生错题本（可选按 subject 过滤）。
 type ListWrongQuestionsReq struct {
-	g.Meta  `path:"/wrong-questions" method:"get" tags:"WrongBook" summary:"错题本"`
-	Subject string `json:"subject" in:"query"`
+	g.Meta    `path:"/wrong-questions" method:"get" tags:"WrongBook" summary:"错题本"`
+	Subject   string `json:"subject" in:"query"`
+	StudentID int    `json:"student_id" in:"query"`
 }
 type ListWrongQuestionsRes []WrongQuestion

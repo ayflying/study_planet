@@ -50,3 +50,11 @@ jobs:
             APP_VERSION=${{ steps.ver.outputs.version }}
           cache-from: type=gha,scope=app
           cache-to: type=gha,mode=max,scope=app
+
+      - name: 清理旧版本镜像 tag（保留最近 5 个版本 + latest）
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: study_planet
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: false

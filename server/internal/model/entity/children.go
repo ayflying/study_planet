@@ -17,4 +17,5 @@ type Children struct {
 	Grade     int         `json:"grade"     orm:"grade"      description:""` //
 	CreatedAt *gtime.Time `json:"createdAt" orm:"created_at" description:""` //
 	Xp        int         `json:"xp"        orm:"xp"         description:""` //
+	ParentId  *int64      `json:"parentId"  orm:"parent_id"  description:"归属家长，NULL=未归属"` //
 }

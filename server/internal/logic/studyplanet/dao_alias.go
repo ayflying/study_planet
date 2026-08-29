@@ -8,7 +8,6 @@ type (
 	doTasks     = do.Tasks
 	doRewards   = do.Rewards
 	doPointsLog = do.PointsLog
-	doSettings  = do.Settings
 	doParents   = do.Parents
 	doWordProg  = do.WordProgress
 	doRedempt   = do.Redemptions

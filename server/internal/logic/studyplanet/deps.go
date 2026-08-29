@@ -12,10 +12,10 @@ import (
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/gtime"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"studyplanet/internal/config"
 	"studyplanet/internal/leaderboard"
+	"studyplanet/internal/middleware"
 	"studyplanet/internal/service"
 )
 
@@ -85,26 +85,18 @@ func nowStr() string { return time.Now().Format("2006-01-02 15:04:05") }
 func todayStr() string { return time.Now().Format("2006-01-02") }
 
 // issueToken 签发家长 JWT。
-func issueToken(secret, name string) (string, error) {
+// parentID>0 时写入 claims（Casdoor 登录），数据隔离按它判定归属；
+// 无家长账号的旧式登录（已废弃的 PIN）签 parentID=0，只能走只读兜底。
+func issueToken(secret, name string, parentID int) (string, error) {
 	// 会话没有固定过期时间：前端将 token 持久化到 localStorage，
 	// 只有家长主动退出（或更换 JWT_SECRET）才会结束登录状态。
 	claims := jwt.MapClaims{
-		"sub":  "parent",
-		"name": name,
+		"sub":       "parent",
+		"name":      name,
+		"parent_id": parentID,
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return t.SignedString([]byte(secret))
-}
-
-// hashPin bcrypt 加密 PIN。
-func hashPin(pin string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(pin), 10)
-	return string(b), err
-}
-
-// checkPin 校验 PIN 与 bcrypt 哈希是否匹配。
-func checkPin(hash, pin string) bool {
-	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pin)) == nil
 }
 
 // ---------- 业务错误（GF 中间件统一包装为 {code,message,data}） ----------
@@ -117,6 +109,12 @@ func errNotFound(msg string) error { return gerror.NewCode(gcode.CodeNotFound, m
 
 // errAuth 鉴权/密码错误（对应 HTTP 401 语义，业务 code=56）。
 func errAuth(msg string) error { return gerror.NewCode(gcode.CodeNotAuthorized, msg) }
+
+// errForbidden 无权操作他人数据（对应 HTTP 403 语义，业务 code=59）。
+func errForbidden(msg string) error { return gerror.NewCode(gcode.CodeSecurityReason, msg) }
+
+// ctxParentID 当前登录家长 id（ParentAuth 中间件注入；未携带时为 0）。
+func ctxParentID(ctx context.Context) int { return middleware.ParentIDOf(ctx) }
 
 // ---------- XP / 积分（多业务文件共用） ----------
 

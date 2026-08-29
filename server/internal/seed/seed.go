@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/gogf/gf/v2/database/gdb"
-	"golang.org/x/crypto/bcrypt"
 )
 
-// Run 在空库时写入五年级示例数据（单词/阅读/数学/任务含逾期/奖励/默认孩子/PIN）。
+// Run 在空库时写入五年级示例数据（单词/阅读/数学/任务含逾期/奖励/默认孩子）。
 // 幂等：children 已有数据则直接返回。
-func Run(ctx context.Context, db gdb.DB, pin string) error {
+// 说明：家长身份完全由 Casdoor SSO 建立，种子数据不带归属（parent_id=NULL），
+// 由第一个登录的家长自动接管。
+func Run(ctx context.Context, db gdb.DB) error {
 	cnt, err := db.Model("children").Ctx(ctx).Count()
 	if err != nil {
 		return fmt.Errorf("check children: %w", err)
@@ -122,6 +123,7 @@ func Run(ctx context.Context, db gdb.DB, pin string) error {
 	}
 
 	// ---- 积分奖励 ----
+	// （无归属 parent_id=NULL：由第一个登录的 Casdoor 家长自动接管）
 	for _, rw := range [][2]string{
 		{"看动画片30分钟", "50"},
 		{"买一本喜欢的绘本", "80"},
@@ -131,15 +133,6 @@ func Run(ctx context.Context, db gdb.DB, pin string) error {
 		if _, err := db.Exec(ctx, "INSERT INTO rewards(name,cost_points,status) VALUES(?,?,'active')", rw[0], cost); err != nil {
 			return err
 		}
-	}
-
-	// ---- 家长 PIN（bcrypt 哈希存入 settings）----
-	hash, err := bcrypt.GenerateFromPassword([]byte(pin), 10)
-	if err != nil {
-		return err
-	}
-	if _, err = db.Exec(ctx, "INSERT INTO settings(`key`,value) VALUES('parent_pin',?) ON DUPLICATE KEY UPDATE value=?", string(hash), string(hash)); err != nil {
-		return err
 	}
 
 	return nil

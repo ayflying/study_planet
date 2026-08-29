@@ -10,9 +10,10 @@ type Reward struct {
 	Status     string `json:"status"` // active | redeemed
 }
 
-// ListRewardsReq 奖励列表（公开接口）。
+// ListRewardsReq 奖励列表：按 student_id 定位所属家庭，只返回该家庭的奖励。
 type ListRewardsReq struct {
-	g.Meta `path:"/rewards" method:"get" tags:"Reward" summary:"奖励列表"`
+	g.Meta    `path:"/rewards" method:"get" tags:"Reward" summary:"奖励列表"`
+	StudentID int `json:"student_id" in:"query"`
 }
 type ListRewardsRes []Reward
 

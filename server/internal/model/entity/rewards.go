@@ -10,4 +10,5 @@ type Rewards struct {
 	Name       string `json:"name"       orm:"name"        description:""` //
 	CostPoints int    `json:"costPoints" orm:"cost_points" description:""` //
 	Status     string `json:"status"     orm:"status"      description:""` //
+	ParentId   *int64 `json:"parentId"   orm:"parent_id"   description:"归属家长，NULL=未归属"` //
 }

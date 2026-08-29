@@ -48,7 +48,7 @@ var Main = gcmd.Command{
 		orm := g.DB()
 
 		if cfg.Seed.Enabled {
-			if err := seed.Run(ctx, orm, cfg.Parent.Pin); err != nil {
+			if err := seed.Run(ctx, orm); err != nil {
 				log.Printf("种子数据警告: %v", err)
 			}
 		}

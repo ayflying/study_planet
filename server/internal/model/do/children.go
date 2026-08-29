@@ -19,4 +19,5 @@ type Children struct {
 	Grade     any         //
 	CreatedAt *gtime.Time //
 	Xp        any         //
+	ParentId  any         // 归属家长（parents.id），NULL=未归属
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gogf/gf/v2/errors/gerror"
+	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gtime"
 
 	v1 "studyplanet/api/studyplanet/v1"
@@ -115,13 +116,24 @@ func (s *sStudyPlanet) CasdoorCallback(ctx context.Context, req *v1.CasdoorCallb
 	}).Save(); err != nil {
 		return nil, gerror.Wrap(err, "保存家长账号失败")
 	}
+	prow, err := daoParents.Ctx(ctx).Where("casdoor_sub", cu.Sub).One()
+	if err != nil || prow.IsEmpty() {
+		return nil, gerror.New("查询家长账号失败")
+	}
+	parentID := prow["id"].Int()
 
-	// 4. 签发本站 JWT，前端凭它调用家长接口
+	// 4. 老数据接管：历史上无家长归属（parent_id 为 NULL）的孩子与奖励，
+	// 归属到第一个登录的家长，此后各家长数据完全隔离。
+	if err := s.claimOrphans(ctx, parentID); err != nil {
+		return nil, gerror.Wrap(err, "接管历史数据失败")
+	}
+
+	// 5. 签发本站 JWT，前端凭它调用家长接口
 	secret := ""
 	if s.Cfg != nil {
 		secret = s.Cfg.Parent.JWTSecret
 	}
-	jw, err := issueToken(secret, name)
+	jw, err := issueToken(secret, name, parentID)
 	if err != nil {
 		return nil, gerror.Wrap(err, "签发令牌失败")
 	}
@@ -130,6 +142,37 @@ func (s *sStudyPlanet) CasdoorCallback(ctx context.Context, req *v1.CasdoorCallb
 try{localStorage.setItem('sp_parent_jwt',` + jsQuote(jw) + `);localStorage.setItem('sp_parent_name',` + jsQuote(name) + `);}catch(e){}
 location.href='/';
 </script>`}, nil
+}
+
+// claimOrphans 历史无归属数据接管：把 parent_id 为 NULL 的孩子与奖励划给指定家长。
+// 仅在家长登录时执行；先判空避免每次登录都跑无谓的 UPDATE。
+func (s *sStudyPlanet) claimOrphans(ctx context.Context, parentID int) error {
+	if parentID <= 0 {
+		return nil
+	}
+	// 孩子无归属 → 全部接管
+	orphanChildren, err := daoChildren.Ctx(ctx).Where("parent_id IS NULL").Count()
+	if err != nil {
+		return err
+	}
+	if orphanChildren > 0 {
+		if _, err := daoChildren.Ctx(ctx).Where("parent_id IS NULL").Data(doChildren{ParentId: parentID}).Update(); err != nil {
+			return err
+		}
+		g.Log().Infof(ctx, "家长 %d 接管了 %d 个无归属孩子", parentID, orphanChildren)
+	}
+	// 奖励无归属 → 全部接管
+	orphanRewards, err := daoRewards.Ctx(ctx).Where("parent_id IS NULL").Count()
+	if err != nil {
+		return err
+	}
+	if orphanRewards > 0 {
+		if _, err := daoRewards.Ctx(ctx).Where("parent_id IS NULL").Data(doRewards{ParentId: parentID}).Update(); err != nil {
+			return err
+		}
+		g.Log().Infof(ctx, "家长 %d 接管了 %d 条无归属奖励", parentID, orphanRewards)
+	}
+	return nil
 }
 
 // displayNameOf 家长展示名：优先 name，其次 preferred_username，最后 sub。

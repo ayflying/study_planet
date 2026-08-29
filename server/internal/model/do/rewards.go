@@ -15,4 +15,5 @@ type Rewards struct {
 	Name       any //
 	CostPoints any //
 	Status     any //
+	ParentId   any // 归属家长（parents.id），NULL=未归属
 }

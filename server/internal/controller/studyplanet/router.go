@@ -14,6 +14,7 @@ import (
 //   - /api/parent/* 家长专属操作统一挂 ParentAuth（JWT）鉴权。
 //     注意 auth-mode/login/casdoor 回调虽在 /api/parent 路径下但必须匿名访问，
 //     因此拆为「匿名 parent 认证组」与「鉴权 parent 管理组」两个子分组。
+//   - /api/students 学生切换器挂可选鉴权：匿名=无数据；带家长 token=仅本家孩子。
 func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 	ctrl := NewV1()
 	server.Group("/api", func(group *ghttp.RouterGroup) {
@@ -26,7 +27,6 @@ func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 			ctrl.ParentLogin,
 			ctrl.CasdoorLogin,
 			ctrl.CasdoorCallback,
-			ctrl.ListStudents,
 			ctrl.ListTasks,
 			ctrl.CompleteTask,
 			ctrl.ListRewards,
@@ -57,6 +57,14 @@ func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 			ctrl.BattleRank,
 			ctrl.BattleHistory,
 		)
+
+		// ---- 可选鉴权：匿名可见性受限，带家长 token 后按身份过滤 ----
+		group.Group("/", func(soft *ghttp.RouterGroup) {
+			soft.Middleware(middleware.ParentAuthOptional(cfg.Parent.JWTSecret))
+			soft.Bind(
+				ctrl.ListStudents,
+			)
+		})
 
 		// ---- 家长鉴权：管理操作 ----
 		group.Group("/", func(parent *ghttp.RouterGroup) {

@@ -68,19 +68,46 @@ func taskOf(r gdb.Record) v1.Task {
 
 // resolveChild 解析本次请求对应的学生 id：来自 req 的 student_id，缺省为 1（兼容旧客户端）。
 // 学生不存在时返回 -1。
+// requireOwner=true（家长端写操作）时校验学生归属：parentID 与孩子 parent_id 不一致即拒绝，
+// NULL 归属（历史数据尚未被接管）同样拒绝，防止越权操作他人孩子。
 func (s *sStudyPlanet) resolveChild(ctx context.Context, studentID int) (int, error) {
 	id := studentID
 	if id <= 0 {
 		id = 1
 	}
-	cnt, err := daoChildren.Ctx(ctx).Where("id", id).Count()
+	rec, err := daoChildren.Ctx(ctx).Fields("id,parent_id").Where("id", id).One()
 	if err != nil {
 		return -1, gerror.Wrap(err, "查询学生失败")
 	}
-	if cnt == 0 {
+	if rec.IsEmpty() {
 		return -1, nil
 	}
 	return id, nil
+}
+
+// childParentID 查询孩子的归属家长 id（孩子不存在返回 0）。
+func (s *sStudyPlanet) childParentID(ctx context.Context, childID int) int {
+	v, err := daoChildren.Ctx(ctx).Fields("parent_id").Where("id", childID).Value()
+	if err != nil || v == nil || v.IsNil() {
+		return 0
+	}
+	return v.Int()
+}
+
+// ensureChildOwned 家长端操作前校验孩子归属：不属于自己的孩子一律拒绝。
+func (s *sStudyPlanet) ensureChildOwned(ctx context.Context, childID int) error {
+	parentID := ctxParentID(ctx)
+	if parentID <= 0 {
+		return errAuth("登录状态缺少家长身份，请重新登录")
+	}
+	owner := s.childParentID(ctx, childID)
+	if owner == 0 {
+		return errNotFound("学生不存在")
+	}
+	if owner != parentID {
+		return errForbidden("无权操作该学生")
+	}
+	return nil
 }
 
 // pointsTotal 指定学生当前积分总量（points_log 汇总）。
@@ -454,25 +481,36 @@ func (s *sStudyPlanet) PointsLog(ctx context.Context, req *v1.PointsLogReq) (res
 
 // ---------- 奖励 / 兑换 ----------
 
-// ListRewards 奖励列表（公开接口）。
+// ListRewards 奖励列表。
+// 学生端（无家长 token）：只展示当前孩子所属家长的奖励，家长之间互相隔离；
+// 未指定 student_id 时返回空列表（不泄露任何家长数据）。
 func (s *sStudyPlanet) ListRewards(ctx context.Context, req *v1.ListRewardsReq) (res *v1.ListRewardsRes, err error) {
-	all, err := daoRewards.Ctx(ctx).Order("cost_points").All()
-	if err != nil {
-		return nil, gerror.Wrap(err, "查询奖励失败")
-	}
-	out := make(v1.ListRewardsRes, 0, len(all))
-	for _, r := range all {
-		out = append(out, v1.Reward{
-			ID:         r["id"].Int(),
-			Name:       r["name"].String(),
-			CostPoints: r["cost_points"].Int(),
-			Status:     r["status"].String(),
-		})
+	out := make(v1.ListRewardsRes, 0, 8)
+	if req.StudentID > 0 {
+		ownerID := s.childParentID(ctx, req.StudentID)
+		if ownerID > 0 {
+			all, err := daoRewards.Ctx(ctx).
+				Where("parent_id", ownerID).
+				Where("status", "active").
+				Order("cost_points").All()
+			if err != nil {
+				return nil, gerror.Wrap(err, "查询奖励失败")
+			}
+			for _, r := range all {
+				out = append(out, v1.Reward{
+					ID:         r["id"].Int(),
+					Name:       r["name"].String(),
+					CostPoints: r["cost_points"].Int(),
+					Status:     r["status"].String(),
+				})
+			}
+		}
 	}
 	return &out, nil
 }
 
 // Redeem 学生兑换奖励（公开接口，需家长确认）。
+// 只能兑换当前孩子所属家长上架的奖励，跨家庭兑换直接拒绝。
 func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.RedeemRes, err error) {
 	rw, err := daoRewards.Ctx(ctx).Where("id", req.ID).One()
 	if err != nil {
@@ -490,6 +528,10 @@ func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.R
 	}
 	if cid < 0 {
 		return nil, errNotFound("学生不存在")
+	}
+	// 归属校验：奖励必须属于该孩子所在家庭
+	if ownerID := s.childParentID(ctx, cid); ownerID == 0 || ownerID != rw["parent_id"].Int() {
+		return nil, errForbidden("该奖励不属于当前家庭")
 	}
 	total, err := s.pointsTotal(ctx, cid)
 	if err != nil {
@@ -511,36 +553,20 @@ func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.R
 
 // ---------- 家长端 ----------
 
-// ParentLogin 家长 PIN 登录（Casdoor 启用时禁用）。
+// ParentLogin 家长 PIN 登录（已废弃：多家长架构下 PIN 无法区分家长身份，强制走 Casdoor SSO）。
 func (s *sStudyPlanet) ParentLogin(ctx context.Context, req *v1.ParentLoginReq) (res *v1.ParentLoginRes, err error) {
-	// Casdoor 已配置时禁用 PIN 登录，强制走 SSO
-	if s.Cfg != nil && s.Cfg.Casdoor.Enabled() {
-		return nil, errAuth("已启用 Casdoor 登录，请使用 SSO")
-	}
-	rec, err := daoSettings.Ctx(ctx).Where("key", "parent_pin").One()
-	if err != nil || rec.IsEmpty() {
-		return nil, errAuth("PIN 未设置")
-	}
-	if !checkPin(rec["value"].String(), req.Pin) {
-		return nil, errAuth("密码错误")
-	}
-	secret := ""
-	if s.Cfg != nil {
-		secret = s.Cfg.Parent.JWTSecret
-	}
-	tok, err := issueToken(secret, "家长")
-	if err != nil {
-		return nil, gerror.Wrap(err, "签发令牌失败")
-	}
-	return &v1.ParentLoginRes{Token: tok}, nil
+	return nil, errAuth("PIN 登录已停用，请使用 Casdoor SSO 登录")
 }
 
 // ---------- 以下为家长鉴权后接口 ----------
 
-// AddTask 发布任务（家长鉴权）。
+// AddTask 发布任务（家长鉴权）：学生必须归属当前家长。
 func (s *sStudyPlanet) AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1.AddTaskRes, err error) {
 	if strings.TrimSpace(req.Title) == "" {
 		return nil, errParam("请填写任务名称")
+	}
+	if err := s.ensureChildOwned(ctx, req.StudentID); err != nil {
+		return nil, err
 	}
 	data := doTasks{
 		Title:   req.Title,
@@ -563,30 +589,45 @@ func (s *sStudyPlanet) AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1
 	return &v1.AddTaskRes{OK: true}, nil
 }
 
-// DeleteTask 删除任务（家长鉴权）。
+// DeleteTask 删除任务（家长鉴权）：任务须属于当前家长的学生。
 func (s *sStudyPlanet) DeleteTask(ctx context.Context, req *v1.DeleteTaskReq) (res *v1.DeleteTaskRes, err error) {
+	t, err := daoTasks.Ctx(ctx).Fields("id,child_id").Where("id", req.ID).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询任务失败")
+	}
+	if t.IsEmpty() {
+		return nil, errNotFound("未找到该任务")
+	}
+	if err := s.ensureChildOwned(ctx, t["child_id"].Int()); err != nil {
+		return nil, err
+	}
 	if _, err := daoTasks.Ctx(ctx).Where("id", req.ID).Delete(); err != nil {
 		return nil, gerror.Wrap(err, "删除任务失败")
 	}
 	return &v1.DeleteTaskRes{OK: true}, nil
 }
 
-// AddReward 添加奖励（家长鉴权）。
+// AddReward 添加奖励（家长鉴权）：奖励归属当前家长，仅自家孩子可见可兑。
 func (s *sStudyPlanet) AddReward(ctx context.Context, req *v1.AddRewardReq) (res *v1.AddRewardRes, err error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errParam("请填写奖励名称")
+	}
+	parentID := ctxParentID(ctx)
+	if parentID <= 0 {
+		return nil, errAuth("登录状态缺少家长身份，请重新登录")
 	}
 	if _, err := daoRewards.Ctx(ctx).Data(doRewards{
 		Name:       req.Name,
 		CostPoints: req.CostPoints,
 		Status:     "active",
+		ParentId:   parentID,
 	}).Insert(); err != nil {
 		return nil, gerror.Wrap(err, "添加奖励失败")
 	}
 	return &v1.AddRewardRes{OK: true}, nil
 }
 
-// ConfirmRedemption 家长确认兑换（家长鉴权）。
+// ConfirmRedemption 家长确认兑换（家长鉴权）：兑换必须属于当前家长的学生。
 func (s *sStudyPlanet) ConfirmRedemption(ctx context.Context, req *v1.ConfirmRedemptionReq) (res *v1.ConfirmRedemptionRes, err error) {
 	rd, err := daoRedempt.Ctx(ctx).Where("id", req.ID).One()
 	if err != nil {
@@ -594,6 +635,9 @@ func (s *sStudyPlanet) ConfirmRedemption(ctx context.Context, req *v1.ConfirmRed
 	}
 	if rd.IsEmpty() {
 		return nil, errNotFound("未找到该兑换")
+	}
+	if err := s.ensureChildOwned(ctx, rd["child_id"].Int()); err != nil {
+		return nil, err
 	}
 	if rd["status"].String() != "pending" {
 		return nil, errAuth("该兑换不在待确认状态")
@@ -617,41 +661,39 @@ func (s *sStudyPlanet) ConfirmRedemption(ctx context.Context, req *v1.ConfirmRed
 	return &v1.ConfirmRedemptionRes{OK: true}, nil
 }
 
-// SetPin 修改家长 PIN（家长鉴权）。
+// SetPin 修改家长 PIN（已废弃：PIN 登录停用，保留接口返回提示避免旧前端报 404）。
 func (s *sStudyPlanet) SetPin(ctx context.Context, req *v1.SetPinReq) (res *v1.SetPinRes, err error) {
-	if len(req.Pin) < 4 {
-		return nil, errParam("PIN 至少 4 位")
-	}
-	hash, err := hashPin(req.Pin)
-	if err != nil {
-		return nil, gerror.Wrap(err, "PIN 加密失败")
-	}
-	if _, err := daoSettings.Ctx(ctx).Data(doSettings{
-		Key:   "parent_pin",
-		Value: hash,
-	}).Save(); err != nil {
-		return nil, gerror.Wrap(err, "保存 PIN 失败")
-	}
-	return &v1.SetPinRes{OK: true}, nil
+	return nil, errParam("PIN 登录已停用，无需设置 PIN")
 }
 
 // ---------- 学生账号管理（家长鉴权后） ----------
 
-// ListStudents 全部学生（家长切换用）。
+// ListStudents 学生列表（挂可选鉴权）：
+//   - 匿名（学生端未登录家长）：返回空列表——匿名用户不应看到任何家庭的孩子；
+//     前端家长登录（Casdoor）后本接口自动返回本家孩子。
+//   - 带家长 token：只返回归属自己的孩子（数据隔离）。
 func (s *sStudyPlanet) ListStudents(ctx context.Context, req *v1.ListStudentsReq) (res *v1.ListStudentsRes, err error) {
-	all, err := daoChildren.Ctx(ctx).Order("id").All()
+	parentID := ctxParentID(ctx)
+	out := make(v1.ListStudentsRes, 0, 4)
+	if parentID <= 0 {
+		return &out, nil
+	}
+	all, err := daoChildren.Ctx(ctx).Where("parent_id", parentID).Order("id").All()
 	if err != nil {
 		return nil, gerror.Wrap(err, "查询学生失败")
 	}
-	out := make(v1.ListStudentsRes, 0, len(all))
 	for _, r := range all {
 		out = append(out, studentOf(r))
 	}
 	return &out, nil
 }
 
-// CreateStudent 新建学生账号。
+// CreateStudent 新建学生账号：自动归属当前登录家长。
 func (s *sStudyPlanet) CreateStudent(ctx context.Context, req *v1.CreateStudentReq) (res *v1.CreateStudentRes, err error) {
+	parentID := ctxParentID(ctx)
+	if parentID <= 0 {
+		return nil, errAuth("登录状态缺少家长身份，请重新登录")
+	}
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errParam("请填写学生姓名")
 	}
@@ -676,6 +718,7 @@ func (s *sStudyPlanet) CreateStudent(ctx context.Context, req *v1.CreateStudentR
 		Username: req.Username,
 		Avatar:   avatar,
 		Grade:    grade,
+		ParentId: parentID,
 	}).InsertAndGetId()
 	if err != nil {
 		return nil, gerror.Wrap(err, "创建学生失败")
@@ -688,8 +731,11 @@ func (s *sStudyPlanet) CreateStudent(ctx context.Context, req *v1.CreateStudentR
 	return &st, nil
 }
 
-// UpdateStudent 修改学生信息（姓名/头像/年级/用户名）。
+// UpdateStudent 修改学生信息（姓名/头像/年级/用户名）：仅限自己的孩子。
 func (s *sStudyPlanet) UpdateStudent(ctx context.Context, req *v1.UpdateStudentReq) (res *v1.UpdateStudentRes, err error) {
+	if err := s.ensureChildOwned(ctx, req.ID); err != nil {
+		return nil, err
+	}
 	if req.Name != nil && *req.Name == "" {
 		return nil, errParam("姓名不能为空")
 	}
@@ -728,9 +774,12 @@ func (s *sStudyPlanet) UpdateStudent(ctx context.Context, req *v1.UpdateStudentR
 	return &st, nil
 }
 
-// DeleteStudent 删除学生；至少保留一个，且清空其学习数据。
+// DeleteStudent 删除学生；至少保留一个，且清空其学习数据。仅限自己的孩子。
 func (s *sStudyPlanet) DeleteStudent(ctx context.Context, req *v1.DeleteStudentReq) (res *v1.DeleteStudentRes, err error) {
-	cnt, err := daoChildren.Ctx(ctx).Count()
+	if err := s.ensureChildOwned(ctx, req.ID); err != nil {
+		return nil, err
+	}
+	cnt, err := daoChildren.Ctx(ctx).Where("parent_id", ctxParentID(ctx)).Count()
 	if err != nil {
 		return nil, gerror.Wrap(err, "统计学生失败")
 	}

@@ -9,7 +9,6 @@ var (
 	daoTasks     = dao.Tasks
 	daoRewards   = dao.Rewards
 	daoPointsLog = dao.PointsLog
-	daoSettings  = dao.Settings
 	daoParents   = dao.Parents
 	daoWords     = dao.Words
 	daoReadings  = dao.Readings

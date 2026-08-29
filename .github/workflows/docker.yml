@@ -69,7 +69,7 @@ jobs:
         env:
           PORTAINER_URL: ${{ secrets.PORTAINER_URL || vars.PORTAINER_URL }}
           PORTAINER_KEY: ${{ secrets.PORTAINER_KEY }}
-          STACK_NAME: studyplanet
+          STACK_NAME: study_planet
         run: |
           set -euo pipefail
           URL="${PORTAINER_URL%/}"

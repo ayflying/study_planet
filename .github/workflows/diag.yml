@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: 查询生产容器清单
         env:
-          URL: ${{ secrets.PORTAINER_URL }}
+          URL: ${{ secrets.PORTAINER_URL || vars.PORTAINER_URL }}
           KEY: ${{ secrets.PORTAINER_KEY }}
         run: |
           set -e

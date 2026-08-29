@@ -106,6 +106,9 @@ type player struct {
 	send    chan []byte
 	isBot   bool
 
+	closed     sync.Mutex // 保护 closedFlag（close 与 send 竞争防护）
+	closedFlag bool
+
 	// 对战运行时
 	answers  [questionCount]bool // 每题是否已作答
 	scores   [questionCount]int  // 每题得分
@@ -204,7 +207,11 @@ func (e *Engine) writePump(p *player) {
 	}
 }
 
+// send 向玩家投递消息（非阻塞）；已关闭连接安全跳过，绝不 panic。
 func (e *Engine) send(p *player, m srvMsg) {
+	if p.isBot {
+		return
+	}
 	b, err := jsonMarshal(m)
 	if err != nil {
 		return
@@ -229,6 +236,7 @@ func (e *Engine) joinQueue(p *player, m cliMsg) {
 	}
 	p.childID = m.StudentID
 	p.name, p.avatar = e.childInfo(m.StudentID)
+	log.Printf("[battle] join student=%d subject=%s grade=%d", p.childID, m.Subject, m.Grade)
 
 	key := fmt.Sprintf("%s|%d", m.Subject, m.Grade)
 	e.mu.Lock()
@@ -248,6 +256,7 @@ func (e *Engine) joinQueue(p *player, m cliMsg) {
 		if ok && cur == p {
 			delete(e.waiting, key)
 			e.mu.Unlock()
+			log.Printf("[battle] bot fallback for student=%d", p.childID)
 			bot := &player{
 				childID: -1,
 				name:    e.names[grand.N(0, len(e.names)-1)] + "（机器人）",
@@ -256,6 +265,9 @@ func (e *Engine) joinQueue(p *player, m cliMsg) {
 			}
 			e.startRoom(p, bot, m.Subject, m.Grade, true)
 			return
+		}
+		if ok {
+			log.Printf("[battle] bot fallback skipped: key held by another player")
 		}
 		e.mu.Unlock()
 	})
@@ -281,6 +293,7 @@ func (e *Engine) childInfo(childID int) (string, string) {
 // startRoom 开房：抽 5 题、通知双方、启动第一题计时。
 // botRoom=true 时 p2 是机器人（自动答题）。
 func (e *Engine) startRoom(p1, p2 *player, subject string, grade int, botRoom bool) {
+	log.Printf("[battle] startRoom subject=%s grade=%d bot=%v", subject, grade, botRoom)
 	rm := &room{
 		ID:      fmt.Sprintf("r%d", time.Now().UnixNano()),
 		Subject: subject,
@@ -290,6 +303,9 @@ func (e *Engine) startRoom(p1, p2 *player, subject string, grade int, botRoom bo
 		qIndex:  -1, // nextQuestion 首次调用前移到 0
 	}
 	qs, err := pickBattleQuestions(subject, grade, questionCount)
+	if err != nil {
+		log.Printf("[battle] pickBattleQuestions 失败: %v", err)
+	}
 	if err != nil || len(qs) == 0 {
 		e.send(p1, srvMsg{Type: "finished", Result: "error"})
 		return
@@ -433,9 +449,8 @@ func scoreFor(remainSec int) int {
 
 // onAnswer 处理玩家作答：判分、计分、广播结果；双方都答完或超时 → 下一题。
 func (e *Engine) onAnswer(p *player, m cliMsg) {
-	e.mu.Lock()
+	// roomOf 内部自带 e.mu 加锁；此处不可先持 e.mu（sync.Mutex 不可重入会死锁）
 	rm := e.roomOf(p)
-	e.mu.Unlock()
 	if rm == nil {
 		return
 	}
@@ -613,9 +628,15 @@ func (e *Engine) finishRoom(rm *room) {
 	// 关闭连接，客户端拿到 finished 后自行跳结算页
 	for _, ps := range []*player{p1, p2} {
 		if !ps.isBot {
-			close(ps.send)
+			ps.closed.Lock()
+			if !ps.closedFlag {
+				ps.closedFlag = true
+				close(ps.send)
+			}
+			ps.closed.Unlock()
 		}
 	}
+	log.Printf("[battle] room %s finished p1=%d p2=%d", rm.ID, p1.total, p2.total)
 }
 
 // expReward 结算经验：胜 30 / 平 15 / 负 8。
@@ -786,10 +807,9 @@ func (e *Engine) leave(p *player) {
 		}
 	}
 	e.mu.Unlock()
-	select {
-	case <-p.send: // 已关闭
-	default:
-	}
+	// 只关连接（writePump 会随之退出），不 drain channel：
+	// 原来的 <-p.send 读一行会静默吞掉待发消息，还可能与 close 竞争。
+	p.conn.Close()
 }
 
 // ---------- 辅助 ----------

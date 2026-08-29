@@ -7,6 +7,8 @@ const authMode = ref("pin");
 const pin = ref("");
 const showLogin = ref(false);
 const loading = ref(true);
+// 全局请求计数：>0 时显示阻塞式 Loading 弹框，防止网慢时连点/乱点（页面首次加载除外）
+const busy = ref(0);
 const error = ref("");
 const notice = ref("");
 const view = ref("home");
@@ -70,9 +72,12 @@ function api(path, options = {}) {
   const sep = path.includes("?") ? "&" : "?";
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (parentToken.value) headers.Authorization = `Bearer ${parentToken.value}`;
+  // 首次页面加载用原文本提示；其余请求走阻塞式 Loading 弹框（网慢时挡住交互防乱点）
+  const counted = !loading.value;
+  if (counted) busy.value++;
   return fetch(`${API}${path}${options.child === false ? "" : `${sep}student_id=${currentStudent.value}`}`, {
     ...options, headers, body: options.body ? JSON.stringify(options.body) : undefined
-  }).then(async r => {
+  }).finally(() => { if (counted) busy.value--; }).then(async r => {
     const data = await r.json().catch(() => null);
     // 401：JWT 失效，清理家长态回到学生模式
     if (r.status === 401 && parentToken.value) {

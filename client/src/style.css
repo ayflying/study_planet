@@ -66,3 +66,10 @@
 .task-check.done{background:#DCFCE7;color:#16A34A}
 .reward button.primary{padding:6px 14px;font-size:13px}
 .reward button.primary:disabled{opacity:.45;cursor:not-allowed}
+
+/* 全局阻塞式 Loading 弹框：网络请求期间挡住交互，防止连点/乱点 */
+.loading-modal{z-index:60}
+.loading-dialog{display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px 36px;min-width:220px}
+.loading-dialog p{margin:0;color:#6b6480;font-size:14px;font-weight:800}
+.spinner{width:38px;height:38px;border-radius:50%;border:4px solid #ece7fa;border-top-color:#9b6cff;animation:sp-spin .8s linear infinite}
+@keyframes sp-spin{to{transform:rotate(360deg)}}

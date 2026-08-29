@@ -119,7 +119,7 @@ func (s *sStudyPlanet) ContentAnswer(ctx context.Context, req *v1.ContentAnswerR
 		return nil, errNotFound("题目不存在")
 	}
 	answer := row["answer"].String()
-	correct := strings.EqualFold(strings.TrimSpace(answer), strings.TrimSpace(req.Answer))
+	correct := judgeAnswer(answer, req.Answer)
 	res = &v1.ContentAnswerRes{
 		Correct:     correct,
 		Answer:      answer,
@@ -128,6 +128,10 @@ func (s *sStudyPlanet) ContentAnswer(ctx context.Context, req *v1.ContentAnswerR
 	cid, err := s.resolveChild(ctx, req.StudentID)
 	if err != nil {
 		return nil, err
+	}
+	if cid > 0 {
+		// 主人答题表现转化为宠物经验/好感（非关键路径）
+		s.addPetExp(ctx, cid, correct)
 	}
 	if req.SessionID > 0 && cid > 0 {
 		// 复用多邻国链路：连击 / XP / 错题本（错题统一记录）

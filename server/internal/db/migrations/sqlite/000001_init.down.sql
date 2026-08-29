@@ -1,0 +1,12 @@
+-- 000001 回滚：删除全部表（与 up 顺序相反）
+DROP TABLE IF EXISTS settings;
+DROP TABLE IF EXISTS redemptions;
+DROP TABLE IF EXISTS rewards;
+DROP TABLE IF EXISTS points_log;
+DROP TABLE IF EXISTS tasks;
+DROP TABLE IF EXISTS math_problems;
+DROP TABLE IF EXISTS reading_questions;
+DROP TABLE IF EXISTS readings;
+DROP TABLE IF EXISTS word_progress;
+DROP TABLE IF EXISTS words;
+DROP TABLE IF EXISTS children;

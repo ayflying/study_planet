@@ -110,8 +110,8 @@ func Load() *Config {
 	cfg := &Config{}
 	cfg.Server.Port = getInt(c, ctx, "server.port", 8080)
 	cfg.Server.CORS = getStr(c, ctx, "server.cors", "*")
-	cfg.Database.Driver = getStr(c, ctx, "database.driver", "mysql")
-	cfg.Database.DSN = getStr(c, ctx, "database.dsn", "")
+	cfg.Database.Driver = getStr(c, ctx, "database.driver", "sqlite")
+	cfg.Database.DSN = getStr(c, ctx, "database.dsn", "data/studyplanet.db")
 	cfg.Parent.Pin = getStr(c, ctx, "parent.pin", "1234")
 	cfg.Parent.JWTSecret = getStr(c, ctx, "parent.jwtSecret", "change-me-in-prod")
 	cfg.Seed.Enabled = getBool(c, ctx, "seed.enabled", true)

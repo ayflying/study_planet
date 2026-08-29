@@ -1,0 +1,40 @@
+-- 000006 真人对战（5题×10秒，速度计分）+ 段位系统
+
+CREATE TABLE IF NOT EXISTS battles (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  room_id VARCHAR(32) NOT NULL,
+  p1_id BIGINT NOT NULL,
+  p2_id BIGINT NOT NULL DEFAULT 0,
+  subject VARCHAR(32) NOT NULL DEFAULT 'math',
+  grade INT NOT NULL DEFAULT 1,
+  status VARCHAR(16) NOT NULL DEFAULT 'waiting',
+  winner_id BIGINT NOT NULL DEFAULT 0,
+  p1_score INT NOT NULL DEFAULT 0,
+  p2_score INT NOT NULL DEFAULT 0,
+  p1_correct INT NOT NULL DEFAULT 0,
+  p2_correct INT NOT NULL DEFAULT 0,
+  p1_robot TINYINT NOT NULL DEFAULT 0,
+  p2_robot TINYINT NOT NULL DEFAULT 0,
+  trophies1 INT NOT NULL DEFAULT 0,
+  trophies2 INT NOT NULL DEFAULT 0,
+  question_ids TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TIMESTAMP NULL,
+  KEY idx_battles_p1 (p1_id),
+  KEY idx_battles_p2 (p2_id),
+  KEY idx_battles_room (room_id)
+);
+
+CREATE TABLE IF NOT EXISTS battle_scores (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  child_id BIGINT NOT NULL,
+  trophies INT NOT NULL DEFAULT 0,
+  wins INT NOT NULL DEFAULT 0,
+  losses INT NOT NULL DEFAULT 0,
+  draws INT NOT NULL DEFAULT 0,
+  battles INT NOT NULL DEFAULT 0,
+  best_streak INT NOT NULL DEFAULT 0,
+  cur_streak INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_battle_score (child_id)
+);

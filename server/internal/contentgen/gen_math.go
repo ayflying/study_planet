@@ -13,6 +13,7 @@ import (
 func Generate() []contentlib.Question {
 	var qs []contentlib.Question
 	qs = append(qs, genMath()...)
+	qs = append(qs, genFill()...)
 	qs = append(qs, genEnglish()...)
 	qs = append(qs, genChinese()...)
 	qs = append(qs, genScience()...)

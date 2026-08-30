@@ -5,6 +5,7 @@ import {
 } from "../state.js";
 import { api } from "./useApi.js";
 import { load, loadWrong } from "./useData.js";
+import { loadAdmin } from "./useAdmin.js";
 
 // 家长→学生：直接切换（免认证），并立即失效家长中心权限
 export function backToStudent() {

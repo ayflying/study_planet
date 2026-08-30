@@ -1,4 +1,5 @@
 // 练习流程：开始关卡、错题巩固混入、判分（服务端判分，前端无答案）、连击特效、键盘操作
+import { computed } from "vue";
 import {
   view, lesson, questions, questionIndex, combo, sessionId, result, fx,
   activeStudent, hasStudent
@@ -6,6 +7,7 @@ import {
 import { api, fail } from "./useApi.js";
 import { shuffle } from "../utils.js";
 import { load, loadWrong, starCount, totalStars, maxCombo, units, wrongSubject } from "./useData.js";
+import { enterAdmin } from "./useAuth.js";
 
 // 特效播放：答对/连击/答错/三星（kind 决定样式与持续时间）
 export function playFx(kind) {

@@ -11,6 +11,7 @@ type PointsSummaryRes struct {
 	Total       int `json:"total"`
 	TodayEarned int `json:"today_earned"`
 	StudentID   int `json:"student_id"`
+	StarTotal   int `json:"star_total"` // 可用星星（总星星-已花费）
 }
 
 // PointsLogItem 积分流水条目。

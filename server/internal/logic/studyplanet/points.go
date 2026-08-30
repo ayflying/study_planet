@@ -39,7 +39,12 @@ func (s *sStudyPlanet) PointsSummary(ctx context.Context, req *v1.PointsSummaryR
 	if err != nil {
 		return nil, gerror.Wrap(err, "查询今日积分失败")
 	}
-	return &v1.PointsSummaryRes{Total: total, TodayEarned: v.Int(), StudentID: cid}, nil
+	// 可用星星（总星星-已花费），供奖励商店展示，避免与前端计算不一致
+	stars := 0
+	if cid > 0 {
+		stars = s.starTotal(ctx, cid)
+	}
+	return &v1.PointsSummaryRes{Total: total, TodayEarned: v.Int(), StudentID: cid, StarTotal: stars}, nil
 }
 
 // PointsLog 积分流水（最近 100 条，公开接口）。

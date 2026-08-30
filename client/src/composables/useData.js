@@ -26,7 +26,7 @@ export async function load() {
       const [pp, se] = await Promise.all([api("/points"), api("/sessions")]);
       points.value = pp?.total || 0;
       sessions.value = se || [];
-      starTotal.value = (se || []).reduce((s, x) => s + (x.stars || 0), 0);
+      starTotal.value = pp?.star_total || 0; // 从后端获取正确可用星星（已扣减已花费）
     }
   } catch (e) { fail(e); } finally { loading.value = false; }
 }

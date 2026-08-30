@@ -3,7 +3,7 @@ import {
   canAdmin, parentToken, tasks, rewards, logs, notice,
   newTask, newReward, newStudent, showAddStudent,
   showMyTasks, myTasks, newStudentTask, showMyRewards, myRewards,
-  students, currentStudent, busyRedeemSnack
+  students, currentStudent, busyRedeemSnack, points, starTotal
 } from "../state.js";
 import { api, fail } from "./useApi.js";
 import { load } from "./useData.js";
@@ -75,7 +75,14 @@ export async function openMyTasks() {
 }
 
 export async function openMyRewards() {
-  try { myRewards.value = await api("/rewards") || []; showMyRewards.value = true; } catch (e) { fail(e); }
+  try {
+    // 先刷新积分和星星
+    const pp = await api("/points");
+    if (pp?.total !== undefined) points.value = pp.total;
+    if (pp?.star_total !== undefined) starTotal.value = pp.star_total;
+    myRewards.value = await api("/rewards") || [];
+    showMyRewards.value = true;
+  } catch (e) { fail(e); }
 }
 
 export async function doStudentAddTask() {

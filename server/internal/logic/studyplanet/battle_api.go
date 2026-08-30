@@ -1,12 +1,11 @@
+// Package studyplanet 对战查询接口：段位榜 / 历史战绩，以及孩子信息容错读取。
 package studyplanet
 
 import (
 	"context"
-	"math"
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
-	"github.com/gogf/gf/v2/os/gtime"
 
 	v1 "studyplanet/api/studyplanet/v1"
 	"studyplanet/internal/battle"
@@ -15,18 +14,6 @@ import (
 // tierOf 奖杯数 → 段位：直接复用 battle 包的唯一实现，避免两处规则漂移。
 func tierOf(trophies int) (string, string) {
 	return battle.TierName(trophies)
-}
-
-// trophiesDelta 对战奖杯增减：胜 +20、平 +5、负 -10（下限 0）。
-func trophiesDelta(result string) int {
-	switch result {
-	case "win":
-		return 20
-	case "draw":
-		return 5
-	default:
-		return -10
-	}
 }
 
 // BattleRank 对战段位榜：按奖杯数排序，附我的段位。
@@ -128,10 +115,7 @@ func (s *sStudyPlanet) BattleHistory(ctx context.Context, req *v1.BattleHistoryR
 			trophies = r["trophies2"].Int()
 		}
 		opName, opAvatar := "练习机器人", "🤖"
-		if r["p2_robot"].Int() == 0 && r["p1_robot"].Int() == 0 && oppID > 0 {
-			opName = s.childName(ctx, oppID)
-			opAvatar = s.childAvatar(ctx, oppID)
-		} else if isP1 && r["p2_robot"].Int() == 0 && oppID > 0 {
+		if r["p2_robot"].Int() == 0 && oppID > 0 {
 			opName = s.childName(ctx, oppID)
 			opAvatar = s.childAvatar(ctx, oppID)
 		}
@@ -165,92 +149,4 @@ func (s *sStudyPlanet) childAvatar(ctx context.Context, id int) string {
 		return "🐣"
 	}
 	return v.String()
-}
-
-// applyBattleResult 对战结算落库：更新 battle_scores（奖杯/胜负/连胜）。
-// 由 battle 引擎在对局结束时调用（每方各一次）。
-func (s *sStudyPlanet) applyBattleResult(ctx context.Context, childID int, result string) {
-	if childID <= 0 {
-		return
-	}
-	row, err := g.DB().Model("battle_scores").Ctx(ctx).Where("child_id", childID).One()
-	if err != nil {
-		gLog("查询 battle_scores 失败: %v", err)
-		return
-	}
-	if row.IsEmpty() {
-		if _, err := g.DB().Model("battle_scores").Ctx(ctx).Data(g.Map{"child_id": childID}).Insert(); err != nil {
-			gLog("创建 battle_scores 失败: %v", err)
-			return
-		}
-	}
-	trophies := row["trophies"].Int()
-	wins, losses, draws := row["wins"].Int(), row["losses"].Int(), row["draws"].Int()
-	curStreak, bestStreak := row["cur_streak"].Int(), row["best_streak"].Int()
-	switch result {
-	case "win":
-		wins++
-		curStreak++
-		if curStreak > bestStreak {
-			bestStreak = curStreak
-		}
-	case "draw":
-		draws++
-	default:
-		losses++
-		curStreak = 0
-	}
-	nt := trophies + trophiesDelta(result)
-	if nt < 0 {
-		nt = 0
-	}
-	if _, err := g.DB().Model("battle_scores").Ctx(ctx).Where("child_id", childID).Data(g.Map{
-		"trophies": nt, "wins": wins, "losses": losses, "draws": draws,
-		"cur_streak": curStreak, "best_streak": bestStreak,
-		"battles":    row["battles"].Int() + 1,
-		"updated_at": gtime.Now(),
-	}).Update(); err != nil {
-		gLog("更新 battle_scores 失败: %v", err)
-	}
-}
-
-// battleTrophies 当前奖杯数（无记录为 0）。
-func (s *sStudyPlanet) battleTrophies(ctx context.Context, childID int) int {
-	v, err := g.DB().Model("battle_scores").Ctx(ctx).Where("child_id", childID).Value("trophies")
-	if err != nil || v == nil {
-		return 0
-	}
-	return v.Int()
-}
-
-// battleRewardTitle 结算称号（奖励画面用，越赢越稀有）。
-func battleRewardTitle(result string, streak, score int) string {
-	switch result {
-	case "win":
-		if score == 50 {
-			return "满分传说！⭐"
-		}
-		if streak >= 3 {
-			return "三连胜王者！🔥"
-		}
-		return "胜利医师！🎉"
-	case "draw":
-		return "势均力敌！🤝"
-	default:
-		if score >= 30 {
-			return "虽败犹荣！💪"
-		}
-		return "下次一定能赢！🌱"
-	}
-}
-
-// battleMaxRewards 奖励上限保护（数值展示用）。
-func battleMaxRewards(a, b int) int {
-	if a > b {
-		return a
-	}
-	if b > math.MaxInt32 {
-		return math.MaxInt32
-	}
-	return b
 }

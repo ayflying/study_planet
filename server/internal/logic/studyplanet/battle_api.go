@@ -9,27 +9,12 @@ import (
 	"github.com/gogf/gf/v2/os/gtime"
 
 	v1 "studyplanet/api/studyplanet/v1"
+	"studyplanet/internal/battle"
 )
 
-// tierOf 奖杯数 → 段位（名称 + emoji）。
-// 青铜 0+ / 白银 30+ / 黄金 60+ / 铂金 100+ / 钻石 150+ / 星耀 220+ / 王者 300+。
+// tierOf 奖杯数 → 段位：直接复用 battle 包的唯一实现，避免两处规则漂移。
 func tierOf(trophies int) (string, string) {
-	switch {
-	case trophies >= 300:
-		return "王者", "👑"
-	case trophies >= 220:
-		return "星耀", "🌟"
-	case trophies >= 150:
-		return "钻石", "💎"
-	case trophies >= 100:
-		return "铂金", "🛡️"
-	case trophies >= 60:
-		return "黄金", "🏅"
-	case trophies >= 30:
-		return "白银", "🥈"
-	default:
-		return "青铜", "🥉"
-	}
+	return battle.TierName(trophies)
 }
 
 // trophiesDelta 对战奖杯增减：胜 +20、平 +5、负 -10（下限 0）。

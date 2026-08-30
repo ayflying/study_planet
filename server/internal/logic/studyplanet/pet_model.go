@@ -49,11 +49,68 @@ var petFoodList = []petFood{
 	{"star", "星星糖", "⭐", 8, 12, 2, "不含饱但超级喜欢！好感度神器"},
 }
 
+// ---------- 零食掉落权重 ----------
+// 每把最多获得1个零食，最少0个。
+// 用户给定比例：苹果40%、小鱼干/牛奶/星星糖各30%、小蛋糕20%、小火锅10%。
+// 比例之和160，故以权重实现：不掉落权重40，总权重200。
+// 随机1..200，命中区间即得对应零食——保留用户给定的相对稀有度。
+type snackDrop struct {
+	Food   string
+	Weight int
+}
+
+var snackDropTable = []snackDrop{
+	{"", 40}, // 不掉落
+	{"apple", 40},
+	{"fish", 30},
+	{"milk", 30},
+	{"star", 30},
+	{"cake", 20},
+	{"hotpot", 10},
+}
+var snackDropTotal = 200
+
+// rollSnack 掷一次零食掉落：命中返回 foodID，否则返回 ""。
+func rollSnack() string {
+	r := grand.N(1, snackDropTotal)
+	for _, d := range snackDropTable {
+		if r <= d.Weight {
+			return d.Food
+		}
+		r -= d.Weight
+	}
+	return ""
+}
+
+// inventoryColumn foodID → pets 表列名。
+func inventoryColumn(food string) string {
+	switch food {
+	case "apple":
+		return "food_apple"
+	case "fish":
+		return "food_fish"
+	case "milk":
+		return "food_milk"
+	case "star":
+		return "food_star"
+	case "cake":
+		return "food_cake"
+	case "hotpot":
+		return "food_hotpot"
+	}
+	return ""
+}
+
+// ---------- 宠物基础 ----------
+
 // petExpNeed 升到 level+1 所需累计经验：20 + (level-1)*15。
 func petExpNeed(level int) int { return 20 + (level-1)*15 }
 
 // petHungerRate 每小时饱食度衰减。
 const petHungerRate = 4
+
+// petAffectionHours 每多少小时好感度衰减1（缓慢衰减，长期不互动才会触发惩罚）。
+const petAffectionHours = 8
 
 // petMood 由饱食度+好感度推导心情。
 func petMood(hunger, affection int) (mood, text string) {
@@ -88,36 +145,77 @@ func (s *sStudyPlanet) petOf(ctx context.Context, childID int) (gdb.Record, erro
 		"hunger":        80,
 		"affection":     20,
 		"last_decay_at": gtime.Now(),
+		// 食物库存默认为0（由迁移 DEFAULT 0 保证）
 	}).Insert(); err != nil {
 		return nil, err
 	}
 	return g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).One()
 }
 
-// petTick 惰性结算：按距上次的时长衰减饱食度（下限 0），并更新衰减时间。
+// petTick 惰性结算：衰减饱食度（4/小时）+好感度（每8小时-1），检测惩罚。
 func (s *sStudyPlanet) petTick(ctx context.Context, pet gdb.Record) {
+	childID := pet["child_id"].Int()
 	hunger := pet["hunger"].Int()
+	aff := pet["affection"].Int()
 	last := pet["last_decay_at"].Time()
 	hours := time.Since(last).Hours()
-	if hours < 1 || hunger <= 0 {
+	if hours < 1 {
 		return
 	}
-	decay := int(hours) * petHungerRate
-	if decay <= 0 {
+	nh, na := hunger, aff
+	if hunger > 0 {
+		decay := int(hours) * petHungerRate
+		nh = hunger - decay
+		if nh < 0 {
+			nh = 0
+		}
+	}
+	if aff > 0 {
+		da := int(hours) / petAffectionHours
+		na = aff - da
+		if na < 0 {
+			na = 0
+		}
+	}
+	if nh == hunger && na == aff {
 		return
 	}
-	nh := hunger - decay
-	if nh < 0 {
-		nh = 0
-	}
-	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", pet["child_id"].Int()).Data(g.Map{
-		"hunger": nh, "last_decay_at": gtime.Now(),
+	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).Data(g.Map{
+		"hunger": nh, "affection": na, "last_decay_at": gtime.Now(),
 	}).Update(); err != nil {
 		gLog("宠物衰减失败: %v", err)
 		return
 	}
 	pet["hunger"] = g.NewVar(nh)
+	pet["affection"] = g.NewVar(na)
 	pet["last_decay_at"] = g.NewVar(gtime.Now())
+
+	// 惩罚：饱食度首次降到0 → 清空积分
+	if nh == 0 && hunger > 0 {
+		s.clearPoints(ctx, childID)
+	}
+	// 惩罚：好感度首次降到0 → 清空星星
+	if na == 0 && aff > 0 {
+		s.clearStars(ctx, childID)
+	}
+}
+
+// clearPoints 清空学生积分（删除全部积分流水）。
+func (s *sStudyPlanet) clearPoints(ctx context.Context, childID int) {
+	if _, err := daoPointsLog.Ctx(ctx).Where("child_id", childID).Delete(); err != nil {
+		gLog("宠物惩罚-清空积分失败 child=%d: %v", childID, err)
+		return
+	}
+	gLog("宠物惩罚：饱食度归零，已清空 child=%d 的积分", childID)
+}
+
+// clearStars 清空学生学习星星（关卡星级归零）。
+func (s *sStudyPlanet) clearStars(ctx context.Context, childID int) {
+	if _, err := daoSessions.Ctx(ctx).Where("child_id", childID).Data(g.Map{"stars": 0, "max_combo": 0}).Update(); err != nil {
+		gLog("宠物惩罚-清空星星失败 child=%d: %v", childID, err)
+		return
+	}
+	gLog("宠物惩罚：好感度归零，已清空 child=%d 的星星", childID)
 }
 
 // petToRes 宠物行 → 响应结构。
@@ -140,6 +238,14 @@ func (s *sStudyPlanet) petToRes(pet gdb.Record) *v1.Pet {
 	if t := pet["last_fed_at"].Time(); !t.IsZero() && t.Year() > 2000 {
 		lastFed = t.Format("01-02 15:04")
 	}
+	foodInv := map[string]int{
+		"apple":  pet["food_apple"].Int(),
+		"fish":   pet["food_fish"].Int(),
+		"milk":   pet["food_milk"].Int(),
+		"star":   pet["food_star"].Int(),
+		"cake":   pet["food_cake"].Int(),
+		"hotpot": pet["food_hotpot"].Int(),
+	}
 	return &v1.Pet{
 		ChildID: pet["child_id"].Int(), Name: pet["name"].String(),
 		Species: sp.Code, SpeciesName: sp.Name, Emoji: sp.Emoji,
@@ -148,6 +254,7 @@ func (s *sStudyPlanet) petToRes(pet gdb.Record) *v1.Pet {
 		Hunger: hunger, Affection: aff,
 		Mood: mood, MoodText: text,
 		FedCount: pet["fed_count"].Int(), LastFedAt: lastFed,
+		FoodInv: foodInv,
 	}
 }
 

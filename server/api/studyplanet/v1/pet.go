@@ -4,20 +4,22 @@ import "github.com/gogf/gf/v2/frame/g"
 
 // Pet 宠物信息。
 type Pet struct {
-	ChildID    int    `json:"child_id"`
-	Name       string `json:"name"`
-	Species    string `json:"species"`
-	SpeciesName string `json:"species_name"`
-	Emoji      string `json:"emoji"`
-	Level      int    `json:"level"`
-	Exp        int    `json:"exp"`
-	ExpMax     int    `json:"exp_max"`
-	Hunger     int    `json:"hunger"`
-	Affection  int    `json:"affection"`
-	Mood       string `json:"mood"`
-	MoodText   string `json:"mood_text"`
-	FedCount   int    `json:"fed_count"`
-	LastFedAt  string `json:"last_fed_at"`
+	ChildID     int            `json:"child_id"`
+	Name        string         `json:"name"`
+	Species     string         `json:"species"`
+	SpeciesName string         `json:"species_name"`
+	Emoji       string         `json:"emoji"`
+	Level       int            `json:"level"`
+	Exp         int            `json:"exp"`
+	ExpMax      int            `json:"exp_max"`
+	Hunger      int            `json:"hunger"`
+	Affection   int            `json:"affection"`
+	Mood        string         `json:"mood"`
+	MoodText    string         `json:"mood_text"`
+	FedCount    int            `json:"fed_count"`
+	LastFedAt   string         `json:"last_fed_at"`
+	FoodInv     map[string]int `json:"food_inventory"` // 食物库存，如 {"apple":1}
+	SnackMsg    string         `json:"snack_msg,omitempty"` // 掉落提示/温馨提醒
 }
 
 // PetFood 投喂食物项。

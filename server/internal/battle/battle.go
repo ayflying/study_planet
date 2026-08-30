@@ -34,6 +34,8 @@ type Engine struct {
 	names   []string // 机器人名字池
 	// AddXP 经验回调：由 cmd 启动时注入（联动周榜），可空。
 	AddXP func(childID int, delta int)
+	// OnSnack 对战胜利零食掉落回调：由 cmd 注入，可空。
+	OnSnack func(childID int)
 }
 
 // New 创建引擎。

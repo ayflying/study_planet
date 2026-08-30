@@ -8,6 +8,7 @@ import (
 
 	"github.com/gogf/gf/v2/errors/gerror"
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/gtime"
 
 	v1 "studyplanet/api/studyplanet/v1"
@@ -28,10 +29,11 @@ func (s *sStudyPlanet) PetGet(ctx context.Context, req *v1.PetGetReq) (res *v1.P
 	}
 	s.petTick(ctx, pet)
 	r := s.petToRes(pet)
+	r.SnackMsg = "温馨提示：饱食度降为0时会清空积分，好感度降为0时会清空星星哦！"
 	return (*v1.PetGetRes)(r), nil
 }
 
-// PetFeed 投喂。
+// PetFeed 投喂（需消耗库存食物，完成任务/对战/学习可掉落获得）。
 func (s *sStudyPlanet) PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1.PetFeedRes, err error) {
 	cid, err := s.resolveChild(ctx, req.StudentID)
 	if err != nil {
@@ -55,6 +57,17 @@ func (s *sStudyPlanet) PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1
 	if food.ID == "" {
 		return nil, errParam("没有这种食物哦")
 	}
+
+	// 检查库存
+	col := inventoryColumn(food.ID)
+	if col == "" {
+		return nil, errParam("未知的食物类型")
+	}
+	qty := pet[col].Int()
+	if qty <= 0 {
+		return nil, errParam("这种零食吃完了，快去完成任务、对战或学习获取零食吧！")
+	}
+
 	hunger := pet["hunger"].Int()
 	aff := pet["affection"].Int()
 	// 已吃很饱时不再涨饱食度，但仍给少量好感（宠物会开心被投喂）
@@ -75,10 +88,12 @@ func (s *sStudyPlanet) PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1
 	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", cid).Data(g.Map{
 		"hunger": newHunger, "affection": newAff, "exp": newExp, "level": newLevel,
 		"fed_count": pet["fed_count"].Int() + 1, "last_fed_at": gtime.Now(), "last_decay_at": gtime.Now(),
+		col: qty - 1, // 消耗1个库存
 	}).Update(); err != nil {
 		return nil, gerror.Wrap(err, "投喂失败")
 	}
 	pet["hunger"], pet["affection"], pet["exp"], pet["level"], pet["fed_count"] = g.NewVar(newHunger), g.NewVar(newAff), g.NewVar(newExp), g.NewVar(newLevel), g.NewVar(pet["fed_count"].Int()+1)
+	pet[col] = g.NewVar(qty - 1)
 	msg := fmt.Sprintf("%s%s 吃得津津有味！", spEmojiOf(pet["species"].String()), pet["name"].String())
 	if hunger >= 100 {
 		msg = fmt.Sprintf("它已经饱了，但还是开心地收下了 %s%s！", food.Emoji, food.Name)
@@ -87,6 +102,29 @@ func (s *sStudyPlanet) PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1
 		msg += fmt.Sprintf(" 🎉 升到 Lv.%d 了！", newLevel)
 	}
 	return &v1.PetFeedRes{Pet: *s.petToRes(pet), Message: msg, LevelUp: levelUp, FedBurst: fedBurst}, nil
+}
+
+// addSnackDrop 一次"零食掉落"：命中则给该学生宠物加1个对应零食，返回掉落的 foodID（空表示未掉落）。
+func (s *sStudyPlanet) addSnackDrop(ctx context.Context, childID int) string {
+	if childID <= 0 {
+		return ""
+	}
+	food := rollSnack()
+	if food == "" {
+		return ""
+	}
+	col := inventoryColumn(food)
+	if col == "" {
+		return ""
+	}
+	// 直接 SQL 累加，避免竞态
+	q := "UPDATE pets SET " + col + " = " + col + " + 1 WHERE child_id=?"
+	if _, err := g.DB().Exec(ctx, q, childID); err != nil {
+		gLog("零食掉落累加失败 child=%d food=%s: %v", childID, food, err)
+		return ""
+	}
+	gLog("零食掉落：child=%d 获得 %s", childID, food)
+	return food
 }
 
 // PetRename 改名。
@@ -165,4 +203,11 @@ func (s *sStudyPlanet) PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *
 		})
 	}
 	return &out, nil
+}
+
+// ExternalSnackDrop 供 battle 引擎在胜利后给学生掉落零食。
+func ExternalSnackDrop() func(childID int) {
+	return func(childID int) {
+		Study().addSnackDrop(gctx.New(), childID)
+	}
 }

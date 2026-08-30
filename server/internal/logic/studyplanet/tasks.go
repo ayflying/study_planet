@@ -68,6 +68,8 @@ func (s *sStudyPlanet) CompleteTask(ctx context.Context, req *v1.CompleteTaskReq
 	}
 	points := t["points"].Int()
 	s.award(cid, points, "完成任务:+"+g.NewVar(points).String())
+	// 完成任务可能掉落零食
+	s.addSnackDrop(ctx, cid)
 	return &v1.CompleteTaskRes{OK: true}, nil
 }
 

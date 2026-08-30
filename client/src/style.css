@@ -192,6 +192,10 @@
 .food-emoji{font-size:32px}
 .food b{font-size:13.5px;color:#30304a}
 .food small{font-size:10.5px;color:#a3a1b8;font-weight:700}
+.food-count{position:absolute;top:-6px;right:-6px;min-width:22px;height:22px;border-radius:999px;background:#ff8a3d;color:#fff;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;padding:0 6px;box-shadow:0 2px 6px rgba(255,138,61,.35)}
+.food-count.zero{background:#d9d2c7;box-shadow:none}
+.food{position:relative}
+.snack-tip{background:#fff3e6;border-radius:12px;padding:10px 14px;font-size:12.5px;color:#c75b1f;font-weight:700;margin:8px 0 0;line-height:1.5}
 .quick-icon.pet-icon{background:#fff0f6;font-size:18px}
 .quick-icon.rank2{background:linear-gradient(135deg,#ffc531,#ff9a3d)}
 @media(max-width:600px){.food-grid{grid-template-columns:1fr 1fr}.arena-hero{flex-wrap:wrap}.arena-hero .cta{margin-left:0;width:100%}}

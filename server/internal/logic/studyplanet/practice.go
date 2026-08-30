@@ -122,6 +122,8 @@ func (s *sStudyPlanet) FinishSession(ctx context.Context, req *v1.FinishSessionR
 		}
 		s.award(cid, bonus, fmt.Sprintf("%s 奖励:+%d", label, bonus))
 	}
+	// 学习探索地图完成一关可能掉落零食
+	s.addSnackDrop(ctx, cid)
 	return &v1.FinishSessionRes{
 		Stars:    stars,
 		Bonus:    bonus,

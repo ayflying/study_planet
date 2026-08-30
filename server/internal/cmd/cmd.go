@@ -85,6 +85,7 @@ var Main = gcmd.Command{
 		// 真人对战 WebSocket：/ws/battle（gorilla 升级，独立于 gf 分组中间件）
 		battleEngine := battle.New()
 		battleEngine.AddXP = studyplanet.ExternalAddXP(board)
+		battleEngine.OnSnack = studyplanet.ExternalSnackDrop()
 		s.BindHandler("/ws/battle", battleEngine.HandleWS)
 
 		log.Printf("学霸星球 StudyPlanet 服务端已启动，监听 :%d", cfg.Server.Port)

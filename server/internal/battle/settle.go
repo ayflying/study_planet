@@ -215,5 +215,9 @@ func (e *Engine) persistResult(ctx context.Context, rm *room, p *player, result 
 	if e.AddXP != nil {
 		e.AddXP(p.childID, expReward(result))
 	}
+	// 胜利时掉落零食
+	if result == "win" && e.OnSnack != nil {
+		e.OnSnack(p.childID)
+	}
 	return trophies
 }

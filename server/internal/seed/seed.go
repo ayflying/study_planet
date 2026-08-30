@@ -125,7 +125,7 @@ func Run(ctx context.Context, db gdb.DB) error {
 	// ---- 积分奖励 ----
 	// （无归属 parent_id=NULL：由第一个登录的 Casdoor 家长自动接管）
 	for _, rw := range [][2]string{
-		{"看动画片30分钟", "50"},
+		{"看电视30分钟", "1000"},
 		{"买一本喜欢的绘本", "80"},
 		{"周末去公园玩", "100"},
 	} {

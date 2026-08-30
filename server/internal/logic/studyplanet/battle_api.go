@@ -87,15 +87,25 @@ func (s *sStudyPlanet) BattleHistory(ctx context.Context, req *v1.BattleHistoryR
 		empty := v1.BattleHistoryRes{}
 		return &empty, nil
 	}
+	// 两真人对战时每方各落一行（p1_id=本人），用 room_id 去重只取每场一条；
+	// 参与条件用括号分组，避免 OR/AND 优先级把 status 过滤漏掉 p1 分支。
 	rows, err := g.DB().Model("battles").Ctx(ctx).
-		Where("p1_id", cid).WhereOr("p2_id", cid).
-		Where("status", "finished").
+		Where("(p1_id=? OR p2_id=?) AND status=?", cid, cid, "finished").
 		Order("id DESC").Limit(30).All()
 	if err != nil {
 		return nil, gerror.Wrap(err, "查询对战历史失败")
 	}
+	// 同一场对战两真人各有一行（p1_id=本人），按 room_id 只保留第一条
+	seenRooms := make(map[string]bool, len(rows))
 	out := make(v1.BattleHistoryRes, 0, len(rows))
 	for _, r := range rows {
+		roomID := r["room_id"].String()
+		if roomID != "" {
+			if seenRooms[roomID] {
+				continue // 对手视角那一行跳过，一场只显示一次
+			}
+			seenRooms[roomID] = true
+		}
 		p1 := r["p1_id"].Int()
 		myScore, oppScore := r["p1_score"].Int(), r["p2_score"].Int()
 		oppID := r["p2_id"].Int()

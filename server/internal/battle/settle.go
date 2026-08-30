@@ -39,7 +39,6 @@ func (e *Engine) finishRoom(rm *room) {
 	if !p2.isBot {
 		t2 = e.persistResult(ctx, rm, p2, resultP2, p1)
 	}
-	_ = t2
 
 	for _, ps := range []*player{p1, p2} {
 		if ps.isBot {

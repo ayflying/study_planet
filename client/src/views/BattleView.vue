@@ -17,7 +17,7 @@ import { gradeLabel } from "../constants.js";
       <article v-if="battleQs[battleIdx]" class="card question battle-q">
         <p class="eyebrow orange">{{ battleQs[battleIdx].topic || '抢答' }} · {{ { choice: '选择题', fill: '填空题' }[battleQs[battleIdx].qtype] || '抢答' }}</p>
         <h2>{{ battleQs[battleIdx].question }}</h2>
-        <div v-if="battleQs[battleIdx].options?.length" class="options battle-options"><button v-for="o in battleQs[battleIdx].options" :key="o" :disabled="battlePicked !== undefined" :class="{ picked: battlePicked !== undefined && battleQs[battleIdx].options[battlePicked] === undefined }" @click="battleAnswer(o)">{{ o }}<i class="kbd-num">{{ battleQs[battleIdx].options.indexOf(o) + 1 }}</i></button></div>
+        <div v-if="battleQs[battleIdx].options?.length" class="options battle-options" :class="{ done: battlePicked !== undefined }"><button v-for="o in battleQs[battleIdx].options" :key="o" :disabled="battlePicked !== undefined" @click="battleAnswer(o)">{{ o }}<i class="kbd-num">{{ battleQs[battleIdx].options.indexOf(o) + 1 }}</i></button></div>
         <div v-else class="fill-box"><input v-model="battleFillInput" class="fill-input" placeholder="输入答案，回车抢答" @keydown.enter.prevent="battleAnswer(battleFillInput); battleFillInput=''" /><button class="fill-go" @click="battleAnswer(battleFillInput); battleFillInput=''">抢答 ⏎</button></div>
         <div v-if="battlePicked !== undefined" class="battle-verdict" :class="battleCorrect ? 'ok' : 'no'">{{ battleCorrect ? `⚡ +${battleGain} 分！手速惊人` : '✗ 这题没拿到分' }}<small>当前 {{ battleMe.total }} : {{ battleOpp.total }}</small></div>
       </article>

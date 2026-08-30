@@ -9,14 +9,16 @@ import (
 	"studyplanet/internal/judge"
 )
 
-// nextQuestion 推进到下一题并开始 10 秒计时。
-func (e *Engine) nextQuestion(rm *room) {
+// nextQuestionFrom 推进到下一题并开始 10 秒计时。
+// fromIdx 为触发方所见"正在离开"的题下标：仅当房间当前题号仍等于 fromIdx 才推进。
+// 双方答完（bothDone）与倒计时超时可能并发触发推进，先到先得、后来者题号已变自动作废——天然去重防跳题。
+func (e *Engine) nextQuestionFrom(rm *room, fromIdx int) {
 	rm.mu.Lock()
-	if rm.finished {
+	if rm.finished || rm.qIndex != fromIdx {
 		rm.mu.Unlock()
 		return
 	}
-	rm.qIndex++ // 前移到下一题（首题从 -1 → 0）
+	rm.qIndex++ // 前移到下一题（首局从 -1 → 0）
 	if rm.qIndex >= len(rm.qs) {
 		rm.mu.Unlock()
 		e.finishRoom(rm)
@@ -128,7 +130,7 @@ func (e *Engine) onAnswer(p *player, m cliMsg) {
 		rm.mu.Lock()
 		rm.timerOn = false
 		rm.mu.Unlock()
-		e.nextQuestion(rm)
+		e.nextQuestionFrom(rm, idx)
 	}
 }
 
@@ -147,7 +149,7 @@ func (e *Engine) timeoutQuestion(rm *room, idx int) {
 			e.send(p, srvMsg{Type: "answer_result", QIndex: idx, Correct: false, Score: 0, Total: p.total, OppTotal: oppTotal})
 		}
 	}
-	e.nextQuestion(rm)
+	e.nextQuestionFrom(rm, idx)
 }
 
 // scheduleBot 机器人按难度延时作答：大概率答对，速度随机 3~8 秒。
@@ -187,7 +189,7 @@ func (e *Engine) scheduleBot(rm *room, bot *player, idx int) {
 			rm.mu.Lock()
 			rm.timerOn = false
 			rm.mu.Unlock()
-			e.nextQuestion(rm)
+			e.nextQuestionFrom(rm, idx)
 		}
 	})
 }

@@ -61,16 +61,18 @@ type srvMsg struct {
 	Opponent    *oppInfo          `json:"opponent,omitempty"`
 	Questions   []*v1.PubQuestion `json:"questions,omitempty"`
 	Question    *v1.PubQuestion   `json:"question,omitempty"`
-	QIndex      int               `json:"qindex,omitempty"`
+	// 注意：数值/布尔字段一律不加 omitempty——qindex=0、score=0、correct=false
+	// 等零值是合法协议值，omitempty 会让字段从 JSON 消失，客户端状态错位。
+	QIndex      int               `json:"qindex"`
 	Remain      int               `json:"remain,omitempty"`
-	Correct     bool              `json:"correct,omitempty"`
-	Score       int               `json:"score,omitempty"`
-	Total       int               `json:"total,omitempty"`
+	Correct     bool              `json:"correct"`
+	Score       int               `json:"score"`
+	Total       int               `json:"total"`
 	OppTotal    int               `json:"opp_total,omitempty"`
 	OppAnswered bool              `json:"opp_answered,omitempty"`
 	Result      string            `json:"result,omitempty"` // win/lose/draw
-	MyScore     int               `json:"my_score,omitempty"`
-	OppScore    int               `json:"opp_score,omitempty"`
+	MyScore     int               `json:"my_score"`
+	OppScore    int               `json:"opp_score"`
 	Trophies    int               `json:"trophies,omitempty"`
 	Tier        string            `json:"tier,omitempty"`
 	TierEmoji   string            `json:"tier_emoji,omitempty"`
@@ -106,7 +108,7 @@ type room struct {
 	Grade    int
 	p1, p2   *player
 	qs       []*battleQuestion // 题目（含答案，服务端持有）
-	qIndex   int               // 当前题下标（nextQuestion 前移，起始 -1 表示尚未开题）
+	qIndex   int               // 当前题下标（nextQuestionFrom 前移，起始 -1 表示尚未开题）
 	qDeadli  time.Time
 	timerOn  bool
 	finished bool

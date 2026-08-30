@@ -116,7 +116,7 @@
 .hud-timer b{position:absolute;inset:0;display:grid;place-items:center;font-size:23px;color:#7b57ca}
 .hud-timer.danger b{color:#ff4d6d;animation:qPulse .5s infinite alternate}
 .battle-q h2{min-height:64px}
-.battle-options button.picked{opacity:.55}
+.battle-options.done button{opacity:.55}
 .battle-verdict{margin-top:14px;font-weight:900;font-size:17px}
 .battle-verdict.ok{color:#22b573}
 .battle-verdict.no{color:#e05252}

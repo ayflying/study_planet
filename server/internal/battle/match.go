@@ -90,7 +90,7 @@ func (e *Engine) startRoom(p1, p2 *player, subject string, grade int, botRoom bo
 		Grade:   grade,
 		p1:      p1,
 		p2:      p2,
-		qIndex:  -1, // nextQuestion 首次调用前移到 0
+		qIndex:  -1, // nextQuestionFrom 首次调用前移到 0
 	}
 	qs, err := pickBattleQuestions(subject, grade, questionCount)
 	if err != nil {
@@ -121,7 +121,7 @@ func (e *Engine) startRoom(p1, p2 *player, subject string, grade int, botRoom bo
 			Questions: qsForCli,
 		})
 	}
-	e.nextQuestion(rm)
+	e.nextQuestionFrom(rm, -1)
 }
 
 // otherOf 取对方玩家。

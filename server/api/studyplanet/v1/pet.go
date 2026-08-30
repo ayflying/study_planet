@@ -12,6 +12,7 @@ type Pet struct {
 	Level       int            `json:"level"`
 	Exp         int            `json:"exp"`
 	ExpMax      int            `json:"exp_max"`
+	ExpToNext   int            `json:"exp_to_next"` // 距离下次升级还需经验
 	Hunger      int            `json:"hunger"`
 	Affection   int            `json:"affection"`
 	Mood        string         `json:"mood"`

@@ -51,8 +51,10 @@ type CompleteTaskReq struct {
 	StudentID int `json:"student_id" in:"query"`
 }
 type CompleteTaskRes struct {
-	OK      bool `json:"ok"`
-	Already bool `json:"already,omitempty"`
+	OK        bool   `json:"ok"`
+	Already   bool   `json:"already,omitempty"`
+	Snack     string `json:"snack,omitempty"`      // 掉落零食 id（空=未掉落）
+	SnackName string `json:"snack_name,omitempty"` // 掉落零食显示文本
 }
 
 // StudentAddTaskReq 学生自建任务（公开接口，无需家长鉴权）。

@@ -97,8 +97,8 @@ export async function doStudentDeleteTask(id) {
 
 export async function doCompleteTask(id) {
   try {
-    await api(`/tasks/${id}/complete`, { method: "POST" });
-    notice.value = "任务完成，积分已到账 🎉";
+    const r = await api(`/tasks/${id}/complete`, { method: "POST" });
+    notice.value = "任务完成，积分已到账 🎉" + (r?.snack_name ? `，掉落零食：${r.snack_name} ×1` : "");
     await openMyTasks(); await load();
   } catch (e) { fail(e); }
 }

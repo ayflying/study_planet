@@ -51,4 +51,6 @@ type FinishSessionRes struct {
 	Total     int `json:"total,omitempty"`
 	XPGained  int `json:"xp_gained,omitempty"`
 	Already   int `json:"already,omitempty"` // 重复结算时为 1
+	Snack     string `json:"snack,omitempty"`      // 掉落零食 id
+	SnackName string `json:"snack_name,omitempty"` // 掉落零食显示文本
 }

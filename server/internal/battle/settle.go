@@ -56,6 +56,7 @@ func (e *Engine) finishRoom(rm *room) {
 			WinStreak: ps.streak,
 			Exp:       expReward(res),
 			Rewards:   rewardCopy(res, trophies, ps.streak),
+			Snack:     e.snackOf(res, ps.childID),
 		})
 	}
 
@@ -67,6 +68,14 @@ func (e *Engine) finishRoom(rm *room) {
 		closeSend(ps)
 	}
 	log.Printf("[battle] room %s finished p1=%d p2=%d", rm.ID, p1.total, p2.total)
+}
+
+// snackOf 胜利时触发零食掉落，返回掉落零食 id（空=未掉落）。
+func (e *Engine) snackOf(result string, childID int) string {
+	if result == "win" && e.OnSnack != nil {
+		return e.OnSnack(childID)
+	}
+	return ""
 }
 
 // closeSend 安全关闭玩家发送通道（只关一次，防 close/send 竞争）。
@@ -214,10 +223,6 @@ func (e *Engine) persistResult(ctx context.Context, rm *room, p *player, result 
 	// 经验奖励（联动周榜）
 	if e.AddXP != nil {
 		e.AddXP(p.childID, expReward(result))
-	}
-	// 胜利时掉落零食
-	if result == "win" && e.OnSnack != nil {
-		e.OnSnack(p.childID)
 	}
 	return trophies
 }

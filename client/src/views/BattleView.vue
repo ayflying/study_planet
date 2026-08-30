@@ -31,6 +31,7 @@ import { gradeLabel } from "../constants.js";
         <div class="battle-score"><span>{{ battleResult.my_score }}</span><i>:</i><span>{{ battleResult.opp_score }}</span></div>
         <div class="battle-trophies"><b>{{ battleResult.trophies }}</b><span>奖杯</span><em>{{ battleResult.tier_emoji }} {{ battleResult.tier }}</em></div>
         <ul class="battle-rewards"><li v-for="(r, i) in battleResult.rewards || []" :key="i">{{ r }}</li></ul>
+        <div v-if="battleResult.snack_name" class="battle-snack">🎁 掉落零食：{{ battleResult.snack_name }} ×1</div>
         <div class="battle-exp">✨ 经验 +{{ battleResult.exp }}</div>
         <button class="cta" @click="exitBattle(); openBattleHome()">查看段位榜</button>
         <button class="quit-link" @click="exitBattle(); view='home'">返回主页</button>

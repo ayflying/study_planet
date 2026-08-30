@@ -206,8 +206,8 @@ func (s *sStudyPlanet) PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *
 }
 
 // ExternalSnackDrop 供 battle 引擎在胜利后给学生掉落零食。
-func ExternalSnackDrop() func(childID int) {
-	return func(childID int) {
-		Study().addSnackDrop(gctx.New(), childID)
+func ExternalSnackDrop() func(childID int) string {
+	return func(childID int) string {
+		return Study().addSnackDrop(gctx.New(), childID)
 	}
 }

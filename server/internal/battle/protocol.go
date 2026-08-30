@@ -79,6 +79,7 @@ type srvMsg struct {
 	WinStreak   int               `json:"win_streak,omitempty"`
 	Rewards     []string          `json:"rewards,omitempty"` // 结算奖励文案列表
 	Exp         int               `json:"exp,omitempty"`     // 结算经验
+	Snack       string            `json:"snack,omitempty"`    // 对战胜利可能掉落零食
 }
 
 // ---------- 玩家与房间 ----------

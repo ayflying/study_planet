@@ -82,6 +82,16 @@ func rollSnack() string {
 	return ""
 }
 
+// snackLabel foodID → 显示文本（emoji + 名称），用于"获得零食"提示。
+func snackLabel(food string) string {
+	for _, f := range petFoodList {
+		if f.ID == food {
+			return f.Emoji + " " + f.Name
+		}
+	}
+	return ""
+}
+
 // inventoryColumn foodID → pets 表列名。
 func inventoryColumn(food string) string {
 	switch food {
@@ -251,6 +261,7 @@ func (s *sStudyPlanet) petToRes(pet gdb.Record) *v1.Pet {
 		Species: sp.Code, SpeciesName: sp.Name, Emoji: sp.Emoji,
 		Level: pet["level"].Int(), Exp: pet["exp"].Int(),
 		ExpMax: petExpNeed(pet["level"].Int()),
+		ExpToNext: petExpNeed(pet["level"].Int()) - pet["exp"].Int(),
 		Hunger: hunger, Affection: aff,
 		Mood: mood, MoodText: text,
 		FedCount: pet["fed_count"].Int(), LastFedAt: lastFed,

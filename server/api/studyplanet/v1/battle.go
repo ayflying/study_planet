@@ -12,6 +12,7 @@ type BattleRankEntry struct {
 	Tier      string `json:"tier"`
 	TierEmoji string `json:"tier_emoji"`
 	Wins      int    `json:"wins"`
+	Losses    int    `json:"losses"`
 	Battles   int    `json:"battles"`
 }
 

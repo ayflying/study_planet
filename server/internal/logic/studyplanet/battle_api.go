@@ -24,7 +24,7 @@ func (s *sStudyPlanet) BattleRank(ctx context.Context, req *v1.BattleRankReq) (r
 	}
 	rows, err := g.DB().Model("battle_scores b").Ctx(ctx).
 		LeftJoin("children c", "c.id=b.child_id").
-		Fields("b.child_id", "b.trophies", "b.wins", "b.battles", "c.name", "c.avatar").
+		Fields("b.child_id", "b.trophies", "b.wins", "b.losses", "b.battles", "c.name", "c.avatar").
 		Order("b.trophies DESC").Order("b.wins DESC").Limit(limit).All()
 	if err != nil {
 		return nil, gerror.Wrap(err, "查询段位榜失败")
@@ -37,7 +37,7 @@ func (s *sStudyPlanet) BattleRank(ctx context.Context, req *v1.BattleRankReq) (r
 			Rank: i + 1, ChildID: r["child_id"].Int(),
 			Name: r["name"].String(), Avatar: r["avatar"].String(),
 			Trophies: r["trophies"].Int(), Tier: tier, TierEmoji: emoji,
-			Wins: r["wins"].Int(), Battles: r["battles"].Int(),
+			Wins: r["wins"].Int(), Losses: r["losses"].Int(), Battles: r["battles"].Int(),
 		})
 	}
 	// 我的段位
@@ -64,7 +64,7 @@ func (s *sStudyPlanet) BattleRank(ctx context.Context, req *v1.BattleRankReq) (r
 				Rank: rank, ChildID: cid,
 				Name: s.childName(ctx, cid), Avatar: s.childAvatar(ctx, cid),
 				Trophies: myTrophies, Tier: tier, TierEmoji: emoji,
-				Wins: my["wins"].Int(), Battles: my["battles"].Int(),
+				Wins: my["wins"].Int(), Losses: my["losses"].Int(), Battles: my["battles"].Int(),
 			}
 			if res.My.Rank == 1 && cnt > 1 {
 				// 榜内没有比自己分高的（自己不在榜内时）

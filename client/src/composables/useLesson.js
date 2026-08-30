@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import {
   view, lesson, questions, questionIndex, combo, sessionId, result, fx,
-  activeStudent, hasStudent
+  activeStudent, hasStudent, notice
 } from "../state.js";
 import { api, fail } from "./useApi.js";
 import { shuffle } from "../utils.js";
@@ -95,6 +95,7 @@ export async function nextQuestion() {
   try {
     result.value = await api(`/sessions/${sessionId.value}/finish`, { method: "POST" });
     if (result.value?.stars >= 2) playFx("star");
+    if (result.value?.snack_name) notice.value = `🎁 获得零食：${result.value.snack_name} ×1`;
     await load(); await loadWrong();
   } catch (e) { fail(e); }
 }

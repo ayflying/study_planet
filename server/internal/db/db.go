@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -118,6 +119,7 @@ func Migrate(dsn string) error {
 			maxApplied = v
 		}
 	}
+	var appliedCount int
 	for _, m := range migrations {
 		if applied[m.version] {
 			continue
@@ -134,6 +136,9 @@ func Migrate(dsn string) error {
 		if _, err := conn.Exec("INSERT INTO schema_migrations(version,name) VALUES(?,?)", m.version, m.name); err != nil {
 			return fmt.Errorf("记录迁移版本 %d 失败: %w", m.version, err)
 		}
+		appliedCount++
+		maxApplied = m.version
 	}
+	log.Printf("数据库迁移完成：已应用 %d 个新迁移，当前最新版本 %06d", appliedCount, maxApplied)
 	return nil
 }

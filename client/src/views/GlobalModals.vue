@@ -1,0 +1,23 @@
+<script setup>
+// 全局弹窗：排行榜、添加孩子、我的任务、我的奖励、错误/成功/加载提示
+import {
+  showBoard, leaderboard, currentStudent,
+  showAddStudent, newStudent,
+  showMyTasks, myTasks,
+  showMyRewards, myRewards, points,
+  error, notice, busy
+} from "../state.js";
+import { clearError, clearNotice } from "../composables/useApi.js";
+import { gradeOptions, avatarOptions } from "../constants.js";
+import { addStudent, doCompleteTask, doRedeem } from "../composables/useAdmin.js";
+</script>
+
+<template>
+  <div v-if="showBoard" class="modal" @click.self="showBoard=false"><section class="dialog card board-dialog"><button class="close" @click="showBoard=false">×</button><p class="eyebrow orange">WEEKLY RANKING</p><h2>本周经验排行榜</h2><p class="muted">{{ leaderboard?.week }} 周 · 按本周获得的经验值排名</p><ol class="board-list"><li v-for="(e, i) in leaderboard?.entries || []" :key="e.child_id" :class="{ me: e.child_id === currentStudent, top3: i < 3 }"><span class="board-rank">{{ ['🥇','🥈','🥉'][i] || e.rank }}</span><span class="board-avatar">{{ e.avatar || '🐣' }}</span><span class="board-name">{{ e.name }}</span><b class="board-xp">{{ e.xp }} XP</b></li><li v-if="!(leaderboard?.entries || []).length" class="board-empty">本周还没有人上榜，快去闯关赚经验吧！</li></ol><div v-if="leaderboard?.my_xp" class="board-mine">我的本周经验：<b>{{ leaderboard.my_xp }} XP</b></div></section></div>
+  <div v-if="showAddStudent" class="modal" @click.self="showAddStudent=false"><section class="dialog card add-student-dialog"><button class="close" @click="showAddStudent=false">×</button><p class="eyebrow orange">NEW LEARNER</p><h2>添加孩子账号</h2><p class="muted">填写孩子的基础信息，创建后即可切换到 TA 的专属学习工作台。</p><div class="field"><label>孩子姓名 <b>*</b></label><input v-model="newStudent.name" placeholder="例如：小明" /><small>将显示在孩子的学习工作台上，必填。</small></div><div class="field"><label>用户名（可选）</label><input v-model="newStudent.username" placeholder="例如：xiaoming" /><small>用于孩子登录学习端，留空则不启用用户名登录。</small></div><div class="field"><label>头像</label><div class="avatar-pick"><button v-for="a in avatarOptions" :key="a" type="button" :class="{ picked: newStudent.avatar === a }" @click="newStudent.avatar=a">{{ a }}</button></div><small>给孩子选一个喜欢的形象，会出现在学习地图和排行榜。</small></div><div class="field"><label>年级</label><select v-model.number="newStudent.grade"><option v-for="g in gradeOptions" :key="g.value" :value="g.value">{{ g.label }}</option></select><small>决定学习内容的难度，之后可在孩子管理中调整。</small></div><button class="cta full" @click="addStudent">创建孩子账号</button></section></div>
+  <div v-if="showMyTasks" class="modal" @click.self="showMyTasks=false"><section class="dialog card"><button class="close" @click="showMyTasks=false">×</button><p class="eyebrow orange">MY TASKS</p><h2>我的任务</h2><p class="muted">完成任务可获得积分，逾期任务会标红提醒。</p><div class="list"><div v-for="t in myTasks" :key="t.id" class="list-row"><span class="task-check" :class="{ done: t.status === 'done' }">{{ t.status === 'done' ? '✓' : '○' }}</span><strong>{{ t.title }}</strong><small>+{{ t.points }} 积分 · {{ t.due_date || '今天' }}{{ t.status === 'overdue' ? ' · 已逾期' : '' }}</small><button v-if="t.status !== 'done'" class="primary" @click="doCompleteTask(t.id)">完成</button></div><div v-if="!myTasks.length" class="empty">还没有任务安排，等家长发布吧。</div></div></section></div>
+  <div v-if="showMyRewards" class="modal" @click.self="showMyRewards=false"><section class="dialog card"><button class="close" @click="showMyRewards=false">×</button><p class="eyebrow orange">REWARD SHOP</p><h2>奖励商店</h2><p class="muted">当前积分：<b>{{ points }}</b> · 兑换后需家长确认。</p><div class="reward-grid"><div v-for="r in myRewards" :key="r.id" class="reward"><span class="reward-icon">◆</span><strong>{{ r.name }}</strong><b>{{ r.cost_points }} 积分</b><button v-if="r.status === 'active'" class="primary" :disabled="points < r.cost_points" @click="doRedeem(r.id)">{{ points < r.cost_points ? '积分不足' : '兑换' }}</button><small v-else class="muted">已兑换</small></div><div v-if="!myRewards.length" class="empty">还没有奖励项目。</div></div></section></div>
+  <div v-if="error" class="modal"><section class="dialog card"><h2>操作未完成</h2><p>{{ error }}</p><button class="primary" @click="clearError()">知道了</button></section></div>
+  <div v-if="busy" class="modal loading-modal"><section class="dialog loading-dialog"><div class="spinner"></div><p>处理中，请稍候…</p></section></div>
+  <div v-if="notice" class="modal"><section class="dialog card"><div class="success-mark">✓</div><h2>操作成功</h2><p>{{ notice }}</p><button class="primary" @click="clearNotice()">好的</button></section></div>
+</template>

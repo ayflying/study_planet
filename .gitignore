@@ -14,3 +14,7 @@ server/examples/
 .env
 .env.local
 
+# 本地编译产物
+*.exe
+*.exe~
+

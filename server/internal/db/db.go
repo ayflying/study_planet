@@ -48,6 +48,9 @@ func loadMigrations(driver string) ([]migrationFile, error) {
 }
 
 func splitStatements(sqlText string) []string {
+	// 归一化行尾：git checkout 在 Windows 下会把迁移脚本转成 CRLF，
+	// 残留的 \r 会被 MySQL 当作语句的一部分导致语法错误。
+	sqlText = strings.ReplaceAll(sqlText, "\r\n", "\n")
 	lines := strings.Split(sqlText, "\n")
 	var cleaned []string
 	for _, line := range lines {

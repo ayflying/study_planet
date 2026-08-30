@@ -56,6 +56,7 @@ func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 			ctrl.PetRename,
 			ctrl.PetTick,
 			ctrl.PetFoods,
+			ctrl.RedeemSnack,
 			ctrl.BattleRank,
 			ctrl.BattleHistory,
 		)

@@ -41,6 +41,8 @@ export const lesson = ref(null), questions = ref([]), questionIndex = ref(0), co
 export const fx = ref(""), leaderboard = ref(null), wrongCount = ref(0), showBoard = ref(false);
 export const showMyTasks = ref(false), myTasks = ref([]), newStudentTask = ref({ title: "", type: "学习", due_date: "", points: 5 });
 export const showMyRewards = ref(false), myRewards = ref([]);
+export const starTotal = ref(0);
+export const busyRedeemSnack = ref(false);
 
 // ---------- 宠物模式 ----------
 export const pet = ref(null), petFoods = ref([]), petFeeding = ref(false), petMsg = ref("");

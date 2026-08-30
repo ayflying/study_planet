@@ -74,3 +74,15 @@ type PetFoodsReq struct {
 	g.Meta `path:"/pet/foods" method:"get" tags:"Pet" summary:"食物清单"`
 }
 type PetFoodsRes []PetFood
+
+// RedeemSnackReq 星星兑换零食。
+type RedeemSnackReq struct {
+	g.Meta    `path:"/redeem-snack" method:"post" tags:"Pet" summary:"星星兑换零食"`
+	StudentID int `json:"student_id" in:"query"`
+	Stars     int `json:"stars" v:"required|in:5,8,15"` // 5=小鱼干/牛奶/星星糖(随机), 8=蛋糕, 15=小火锅
+}
+type RedeemSnackRes struct {
+	Snack     string `json:"snack"`      // 获得的零食 id
+	SnackName string `json:"snack_name"` // 显示文本
+	StarsLeft int    `json:"stars_left"` // 剩余可用星星
+}

@@ -3,7 +3,7 @@ import {
   canAdmin, parentToken, tasks, rewards, logs, notice,
   newTask, newReward, newStudent, showAddStudent,
   showMyTasks, myTasks, newStudentTask, showMyRewards, myRewards,
-  students, currentStudent
+  students, currentStudent, busyRedeemSnack
 } from "../state.js";
 import { api, fail } from "./useApi.js";
 import { load } from "./useData.js";
@@ -109,4 +109,13 @@ export async function doRedeem(id) {
     notice.value = r.message || "已提交兑换，等待家长确认";
     await openMyRewards();
   } catch (e) { fail(e); }
+}
+
+export async function doRedeemSnack(stars) {
+  try {
+    busyRedeemSnack.value = true;
+    const r = await api("/redeem-snack", { method: "POST", body: { stars } });
+    notice.value = `🎁 兑换成功！获得零食：${r.snack_name} ×1，剩余 ${r.stars_left} 颗星星`;
+    await load();
+  } catch (e) { fail(e); } finally { busyRedeemSnack.value = false; }
 }

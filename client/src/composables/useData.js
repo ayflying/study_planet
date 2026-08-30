@@ -3,7 +3,7 @@ import { computed } from "vue";
 import {
   students, currentStudent, points, sessions, subjects,
   activeStudent, hasStudent, loading,
-  leaderboard, wrongCount, showBoard
+  leaderboard, wrongCount, showBoard, starTotal
 } from "../state.js";
 import { api, fail } from "./useApi.js";
 import { unitColors, fallbackUnits, wrongSubjectOrder, gradeLabel } from "../constants.js";
@@ -26,6 +26,7 @@ export async function load() {
       const [pp, se] = await Promise.all([api("/points"), api("/sessions")]);
       points.value = pp?.total || 0;
       sessions.value = se || [];
+      starTotal.value = (se || []).reduce((s, x) => s + (x.stars || 0), 0);
     }
   } catch (e) { fail(e); } finally { loading.value = false; }
 }

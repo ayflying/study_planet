@@ -209,3 +209,10 @@
 .quick-icon.pet-icon{background:#fff0f6;font-size:18px}
 .quick-icon.rank2{background:linear-gradient(135deg,#ffc531,#ff9a3d)}
 @media(max-width:600px){.food-grid{grid-template-columns:1fr 1fr}.arena-hero{flex-wrap:wrap}.arena-hero .cta{margin-left:0;width:100%}}
+.sub-title{font-size:16px;margin:20px 0 8px 0;color:#3A2E25;text-align:left}
+.snack-redeem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 0}
+.snack-redeem-grid .reward{text-align:center;padding:12px 8px;min-height:100px;justify-content:center;align-items:center;cursor:pointer}
+.snack-redeem-grid .reward:disabled{opacity:.5;cursor:not-allowed}
+.snack-redeem-grid .reward small{font-size:11px;color:#907765}
+.snack-redeem-grid .reward b{color:#FF8A3D;font-size:15px}
+.reward-shop-dialog{max-width:400px}

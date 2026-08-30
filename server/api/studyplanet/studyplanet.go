@@ -56,6 +56,7 @@ type IStudyplanetV1 interface {
 	PetRename(ctx context.Context, req *v1.PetRenameReq) (res *v1.PetRenameRes, err error)
 	PetTick(ctx context.Context, req *v1.PetDecayReq) (res *v1.PetDecayRes, err error)
 	PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *v1.PetFoodsRes, err error)
+	RedeemSnack(ctx context.Context, req *v1.RedeemSnackReq) (res *v1.RedeemSnackRes, err error)
 	BattleRank(ctx context.Context, req *v1.BattleRankReq) (res *v1.BattleRankRes, err error)
 	BattleHistory(ctx context.Context, req *v1.BattleHistoryReq) (res *v1.BattleHistoryRes, err error)
 }

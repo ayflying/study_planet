@@ -10,6 +10,7 @@ import (
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/os/gctx"
 	"github.com/gogf/gf/v2/os/gtime"
+	"github.com/gogf/gf/v2/util/grand"
 
 	v1 "studyplanet/api/studyplanet/v1"
 )
@@ -210,4 +211,80 @@ func ExternalSnackDrop() func(childID int) string {
 	return func(childID int) string {
 		return Study().addSnackDrop(gctx.New(), childID)
 	}
+}
+
+// starTotal 计算学生累计可用星星（总星星 - 已花费）。
+func (s *sStudyPlanet) starTotal(ctx context.Context, childID int) int {
+	row, err := daoSessions.Ctx(ctx).Where("child_id", childID).Where("finished", 1).Fields("COALESCE(SUM(stars),0) as total").One()
+	if err != nil || row.IsEmpty() {
+		return 0
+	}
+	total := row["total"].Int()
+	// 减去已花费的星星
+	pet, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).One()
+	if err != nil || pet.IsEmpty() {
+		return total
+	}
+	spent := pet["stars_spent"].Int()
+	if total < spent {
+		return 0
+	}
+	return total - spent
+}
+
+// RedeemSnack 星星兑换零食。
+// 5 星 → 小鱼干/牛奶/星星糖（随机三选一）
+// 8 星 → 蛋糕
+// 15 星 → 小火锅
+func (s *sStudyPlanet) RedeemSnack(ctx context.Context, req *v1.RedeemSnackReq) (res *v1.RedeemSnackRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
+	if cid <= 0 {
+		return nil, errNotFound("学生不存在")
+	}
+
+	// 检查可用星星
+	avail := s.starTotal(ctx, cid)
+	if avail < req.Stars {
+		return nil, errParam(fmt.Sprintf("星星不足，当前可用 %d 颗，需要 %d 颗", avail, req.Stars))
+	}
+
+	// 确定零食
+	var foodID string
+	switch req.Stars {
+	case 5:
+		// 小鱼干/牛奶/星星糖 随机三选一
+		choices := []string{"fish", "milk", "star"}
+		foodID = choices[grand.N(0, len(choices)-1)]
+	case 8:
+		foodID = "cake"
+	case 15:
+		foodID = "hotpot"
+	default:
+		return nil, errParam("星星数量无效")
+	}
+
+	col := inventoryColumn(foodID)
+	if col == "" {
+		return nil, errParam("未知的零食类型")
+	}
+
+	// 累加零食库存 + 记录已花费星星（原子操作）
+	q := "UPDATE pets SET " + col + " = " + col + " + 1, stars_spent = stars_spent + ? WHERE child_id=?"
+	if _, err := g.DB().Exec(ctx, q, req.Stars, cid); err != nil {
+		return nil, gerror.Wrap(err, "兑换零食失败")
+	}
+
+	gLog("星星兑换：child=%d 消耗 %d 星获得 %s", cid, req.Stars, foodID)
+
+	// 重新计算剩余星星
+	remaining := s.starTotal(ctx, cid)
+
+	return &v1.RedeemSnackRes{
+		Snack:     foodID,
+		SnackName: snackLabel(foodID),
+		StarsLeft: remaining,
+	}, nil
 }

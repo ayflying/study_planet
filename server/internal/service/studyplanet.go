@@ -113,6 +113,8 @@ type (
 		PetTick(ctx context.Context, req *v1.PetDecayReq) (res *v1.PetDecayRes, err error)
 		// PetFoods 食物列表。
 		PetFoods(ctx context.Context, req *v1.PetFoodsReq) (res *v1.PetFoodsRes, err error)
+		// RedeemSnack 星星兑换零食。
+		RedeemSnack(ctx context.Context, req *v1.RedeemSnackReq) (res *v1.RedeemSnackRes, err error)
 		// BattleRank 对战段位榜。
 		BattleRank(ctx context.Context, req *v1.BattleRankReq) (res *v1.BattleRankRes, err error)
 		// BattleHistory 我的历史对战。

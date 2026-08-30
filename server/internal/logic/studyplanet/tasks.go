@@ -121,8 +121,8 @@ func (s *sStudyPlanet) StudentAddTask(ctx context.Context, req *v1.StudentAddTas
 		Status:  "pending",
 		ChildId: cid,
 	}
-	if req.Points <= 0 || req.Points > 50 {
-		data.Points = 5 // 学生自建任务默认5积分，上限50
+	if req.Points <= 0 || req.Points > 20 {
+		data.Points = 5 // 学生自建任务默认5积分，上限20
 	}
 	if strings.TrimSpace(req.DueDate) != "" {
 		if t, err := gtime.StrToTime(req.DueDate, "Y-m-d"); err == nil {

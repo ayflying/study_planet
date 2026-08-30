@@ -1,1 +1,7 @@
 server/server.log
+server/studyplanet_new.exe
+server/studyplanet.exe
+server/start.bat
+server/start.sh
+client/node_modules
+client/dist

@@ -29,6 +29,8 @@ func BindRoutes(server *ghttp.Server, cfg *config.Config) {
 			ctrl.CasdoorCallback,
 			ctrl.ListTasks,
 			ctrl.CompleteTask,
+			ctrl.StudentAddTask,
+			ctrl.StudentDeleteTask,
 			ctrl.ListRewards,
 			ctrl.Redeem,
 			ctrl.PointsSummary,

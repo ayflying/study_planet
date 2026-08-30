@@ -73,6 +73,10 @@ type (
 		AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1.AddTaskRes, err error)
 		// DeleteTask 删除任务（家长鉴权）。
 		DeleteTask(ctx context.Context, req *v1.DeleteTaskReq) (res *v1.DeleteTaskRes, err error)
+		// StudentAddTask 学生自建任务（公开接口）。
+		StudentAddTask(ctx context.Context, req *v1.StudentAddTaskReq) (res *v1.StudentAddTaskRes, err error)
+		// StudentDeleteTask 学生删除自建任务（公开接口）。
+		StudentDeleteTask(ctx context.Context, req *v1.StudentDeleteTaskReq) (res *v1.StudentDeleteTaskRes, err error)
 		// AddReward 添加奖励（家长鉴权）。
 		AddReward(ctx context.Context, req *v1.AddRewardReq) (res *v1.AddRewardRes, err error)
 		// ConfirmRedemption 家长确认兑换（家长鉴权）。

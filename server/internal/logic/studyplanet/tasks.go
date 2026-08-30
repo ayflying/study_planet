@@ -102,6 +102,63 @@ func (s *sStudyPlanet) AddTask(ctx context.Context, req *v1.AddTaskReq) (res *v1
 	return &v1.AddTaskRes{OK: true}, nil
 }
 
+// StudentAddTask 学生自建任务（公开接口，无需家长鉴权）。
+func (s *sStudyPlanet) StudentAddTask(ctx context.Context, req *v1.StudentAddTaskReq) (res *v1.StudentAddTaskRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
+	if cid < 0 {
+		return nil, errNotFound("学生不存在")
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		return nil, errParam("请填写任务名称")
+	}
+	data := doTasks{
+		Title:   req.Title,
+		Type:    req.Type,
+		Points:  req.Points,
+		Status:  "pending",
+		ChildId: cid,
+	}
+	if req.Points <= 0 || req.Points > 50 {
+		data.Points = 5 // 学生自建任务默认5积分，上限50
+	}
+	if strings.TrimSpace(req.DueDate) != "" {
+		if t, err := gtime.StrToTime(req.DueDate, "Y-m-d"); err == nil {
+			data.DueDate = t
+		} else {
+			data.DueDate = gtime.NewFromStr(req.DueDate)
+		}
+	}
+	if _, err := daoTasks.Ctx(ctx).Data(data).Insert(); err != nil {
+		return nil, gerror.Wrap(err, "创建任务失败")
+	}
+	return &v1.StudentAddTaskRes{OK: true}, nil
+}
+
+// StudentDeleteTask 学生删除自建任务（公开接口，仅删除自己名下任务）。
+func (s *sStudyPlanet) StudentDeleteTask(ctx context.Context, req *v1.StudentDeleteTaskReq) (res *v1.StudentDeleteTaskRes, err error) {
+	cid, err := s.resolveChild(ctx, req.StudentID)
+	if err != nil {
+		return nil, err
+	}
+	if cid < 0 {
+		return nil, errNotFound("学生不存在")
+	}
+	t, err := daoTasks.Ctx(ctx).Where("id", req.ID).Where("child_id", cid).One()
+	if err != nil {
+		return nil, gerror.Wrap(err, "查询任务失败")
+	}
+	if t.IsEmpty() {
+		return nil, errNotFound("未找到该任务")
+	}
+	if _, err := daoTasks.Ctx(ctx).Where("id", req.ID).Delete(); err != nil {
+		return nil, gerror.Wrap(err, "删除任务失败")
+	}
+	return &v1.StudentDeleteTaskRes{OK: true}, nil
+}
+
 // DeleteTask 删除任务（家长鉴权）：任务须属于当前家长的学生。
 func (s *sStudyPlanet) DeleteTask(ctx context.Context, req *v1.DeleteTaskReq) (res *v1.DeleteTaskRes, err error) {
 	t, err := daoTasks.Ctx(ctx).Fields("id,child_id").Where("id", req.ID).One()

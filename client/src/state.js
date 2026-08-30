@@ -39,7 +39,7 @@ export const showAddStudent = ref(false);
 // ---------- 练习（lesson） ----------
 export const lesson = ref(null), questions = ref([]), questionIndex = ref(0), combo = ref(0), sessionId = ref(null), result = ref(null);
 export const fx = ref(""), leaderboard = ref(null), wrongCount = ref(0), showBoard = ref(false);
-export const showMyTasks = ref(false), myTasks = ref([]);
+export const showMyTasks = ref(false), myTasks = ref([]), newStudentTask = ref({ title: "", type: "学习", due_date: "", points: 5 });
 export const showMyRewards = ref(false), myRewards = ref([]);
 
 // ---------- 宠物模式 ----------

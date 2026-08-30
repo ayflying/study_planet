@@ -2,7 +2,7 @@
 import {
   canAdmin, parentToken, tasks, rewards, logs, notice,
   newTask, newReward, newStudent, showAddStudent,
-  showMyTasks, myTasks, showMyRewards, myRewards,
+  showMyTasks, myTasks, newStudentTask, showMyRewards, myRewards,
   students, currentStudent
 } from "../state.js";
 import { api, fail } from "./useApi.js";
@@ -76,6 +76,23 @@ export async function openMyTasks() {
 
 export async function openMyRewards() {
   try { myRewards.value = await api("/rewards") || []; showMyRewards.value = true; } catch (e) { fail(e); }
+}
+
+export async function doStudentAddTask() {
+  try {
+    await api("/tasks", { method: "POST", body: { ...newStudentTask.value, student_id: currentStudent.value } });
+    newStudentTask.value = { title: "", type: "学习", due_date: "", points: 5 };
+    notice.value = "任务已创建 ✍️";
+    await openMyTasks();
+  } catch (e) { fail(e); }
+}
+
+export async function doStudentDeleteTask(id) {
+  try {
+    await api(`/tasks/${id}`, { method: "DELETE", body: { student_id: currentStudent.value } });
+    notice.value = "任务已删除";
+    await openMyTasks();
+  } catch (e) { fail(e); }
 }
 
 export async function doCompleteTask(id) {

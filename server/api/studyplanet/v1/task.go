@@ -54,3 +54,26 @@ type CompleteTaskRes struct {
 	OK      bool `json:"ok"`
 	Already bool `json:"already,omitempty"`
 }
+
+// StudentAddTaskReq 学生自建任务（公开接口，无需家长鉴权）。
+type StudentAddTaskReq struct {
+	g.Meta    `path:"/tasks" method:"post" tags:"Task" summary:"学生自建任务"`
+	Title     string `json:"title" v:"required"`
+	Type      string `json:"type"`
+	DueDate   string `json:"due_date"`
+	Points    int    `json:"points"`
+	StudentID int    `json:"student_id"`
+}
+type StudentAddTaskRes struct {
+	OK bool `json:"ok"`
+}
+
+// StudentDeleteTaskReq 学生删除自建任务（公开接口）。
+type StudentDeleteTaskReq struct {
+	g.Meta    `path:"/tasks/:id" method:"delete" tags:"Task" summary:"学生删除任务"`
+	ID        int `in:"path" json:"-"`
+	StudentID int `json:"student_id" in:"query"`
+}
+type StudentDeleteTaskRes struct {
+	OK bool `json:"ok"`
+}

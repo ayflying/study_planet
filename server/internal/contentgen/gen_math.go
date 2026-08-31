@@ -17,6 +17,7 @@ func Generate() []contentlib.Question {
 	qs = append(qs, genEnglish()...)
 	qs = append(qs, genChinese()...)
 	qs = append(qs, genScience()...)
+	qs = append(qs, genUnitTests()...)
 	return qs
 }
 

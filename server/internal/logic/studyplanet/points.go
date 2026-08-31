@@ -101,7 +101,7 @@ func (s *sStudyPlanet) ListRewards(ctx context.Context, req *v1.ListRewardsReq) 
 	return &out, nil
 }
 
-// Redeem 学生兑换奖励（公开接口，需家长确认）。
+// Redeem 学生兑换奖励（公开接口，直接扣分，无需家长确认）。
 // 只能兑换当前孩子所属家长上架的奖励，跨家庭兑换直接拒绝。
 func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.RedeemRes, err error) {
 	rw, err := daoRewards.Ctx(ctx).Where("id", req.ID).One()
@@ -132,15 +132,14 @@ func (s *sStudyPlanet) Redeem(ctx context.Context, req *v1.RedeemReq) (res *v1.R
 	if total < rw["cost_points"].Int() {
 		return nil, errParam("积分不足")
 	}
-	if _, err := daoRedempt.Ctx(ctx).Data(doRedempt{
-		RewardId:    req.ID,
-		ChildId:     cid,
-		Status:      "pending",
-		RequestedAt: gtime.Now(),
-	}).Insert(); err != nil {
-		return nil, gerror.Wrap(err, "提交兑换失败")
+	// 直接扣分并标记奖励已兑换
+	s.award(cid, -rw["cost_points"].Int(), "兑换:"+rw["name"].String())
+	if _, err := daoRewards.Ctx(ctx).Where("id", req.ID).Data(doRewards{
+		Status: "redeemed",
+	}).Update(); err != nil {
+		return nil, gerror.Wrap(err, "更新奖励状态失败")
 	}
-	return &v1.RedeemRes{OK: true, Pending: true, Message: "已提交兑换，等待家长确认"}, nil
+	return &v1.RedeemRes{OK: true, Pending: false, Message: "兑换成功！🎉"}, nil
 }
 
 // AddReward 添加奖励（家长鉴权）：奖励归属当前家长，仅自家孩子可见可兑。

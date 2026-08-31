@@ -120,7 +120,7 @@ export async function doCompleteTask(id) {
 export async function doRedeem(id) {
   try {
     const r = await api(`/rewards/${id}/redeem`, { method: "POST" });
-    notice.value = r.message || "已提交兑换，等待家长确认";
+    notice.value = r.message || "兑换成功！🎉";
     await openMyRewards();
   } catch (e) { fail(e); }
 }

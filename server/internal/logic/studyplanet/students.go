@@ -57,9 +57,14 @@ func (s *sStudyPlanet) CreateStudent(ctx context.Context, req *v1.CreateStudentR
 			return nil, errParam("用户名已被使用")
 		}
 	}
+	// username 有唯一索引：空值必须落 NULL 而非 ''，否则第二个不填用户名的学生会撞唯一约束。
+	var username any
+	if req.Username != "" {
+		username = req.Username
+	}
 	id, err := daoChildren.Ctx(ctx).Data(doChildren{
 		Name:     req.Name,
-		Username: req.Username,
+		Username: username,
 		Avatar:   avatar,
 		Grade:    grade,
 		ParentId: parentID,
@@ -97,7 +102,12 @@ func (s *sStudyPlanet) UpdateStudent(ctx context.Context, req *v1.UpdateStudentR
 		data["name"] = *req.Name
 	}
 	if req.Username != nil {
-		data["username"] = *req.Username
+		// 空字符串落 NULL（唯一索引），避免与其它空 username 学生冲突
+		if *req.Username == "" {
+			data["username"] = nil
+		} else {
+			data["username"] = *req.Username
+		}
 	}
 	if req.Avatar != nil {
 		data["avatar"] = *req.Avatar

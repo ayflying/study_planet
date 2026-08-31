@@ -11,6 +11,13 @@ import { load } from "./useData.js";
 export async function loadAdmin() {
   if (!canAdmin.value || !parentToken.value) return;
   try {
+    // 还没有学生时跳过按学生查询的接口（tasks/points/log 需要 student_id，
+    // 传 0 会被后端判为"学生不存在"弹阻塞框）；创建学生后 load() 会刷新。
+    if (!students.value.length) {
+      tasks.value = []; logs.value = [];
+      try { rewards.value = await api("/rewards", { child: false }) || []; } catch { rewards.value = []; }
+      return;
+    }
     const [tt, rr, ll] = await Promise.all([
       api(`/tasks?student_id=${currentStudent.value}`, { child: false }),
       api("/rewards", { child: false }),

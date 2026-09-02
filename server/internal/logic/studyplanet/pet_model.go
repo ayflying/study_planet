@@ -3,6 +3,7 @@ package studyplanet
 
 import (
 	"context"
+	"math"
 	"time"
 
 	"github.com/gogf/gf/v2/database/gdb"
@@ -117,7 +118,11 @@ func inventoryColumn(food string) string {
 func petExpNeed(level int) int { return 20 + (level-1)*15 }
 
 // petHungerRate 每小时饱食度衰减。
-const petHungerRate = 4
+// petHungerHours 每满24小时饱食度衰减当前值的20%（指数衰减，越饿掉得越慢）。
+const petHungerHours = 24
+
+// petHungerPct 每24小时扣除的当前饱食度比例（20%）。
+const petHungerPct = 0.2
 
 // petAffectionHours 每多少小时好感度衰减1（缓慢衰减，长期不互动才会触发惩罚）。
 const petAffectionHours = 8
@@ -174,10 +179,14 @@ func (s *sStudyPlanet) petTick(ctx context.Context, pet gdb.Record) {
 	}
 	nh, na := hunger, aff
 	if hunger > 0 {
-		decay := int(hours) * petHungerRate
-		nh = hunger - decay
-		if nh < 0 {
-			nh = 0
+		periods := int(hours) / petHungerHours
+		if periods > 0 {
+			// 每24小时扣当前饱食度的20%（指数衰减）
+			decay := int(float64(hunger) * (1 - math.Pow(1-petHungerPct, float64(periods))))
+			nh = hunger - decay
+			if nh < 0 {
+				nh = 0
+			}
 		}
 	}
 	if aff > 0 {

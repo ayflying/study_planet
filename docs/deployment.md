@@ -52,9 +52,9 @@ curl http://localhost:18180/api/health
 - 流程：Node 构建 Vue → Go 构建服务端（内嵌 `client/dist`）→ 推送镜像 `ghcr.io/ayflying/study_planet`，`latest` + `VERSION` 版本号双标签。
 - 发版：改根目录 `VERSION` → commit → push → CI 自动构建。
 
-## 217 测试服务器
+## <原构建机> 测试服务器
 
-入口：`http://192.168.50.217:18180/`（内网测试环境，与正式环境严格区分）。
+入口：`http://<原构建机>:18180/`（内网测试环境，与正式环境严格区分）。
 
 更新流程：
 

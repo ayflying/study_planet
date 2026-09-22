@@ -9,7 +9,7 @@
 - [x] 客户端迁移 Vue 3 + Vite
 - [x] 服务端 GoFrame 脚手架分层重构（cmd/controller/service/model/middleware）
 - [x] 移除 Nginx：GoFrame 直接托管 Vue 静态资源，单容器架构
-- [x] 部署 217 测试服务器（`http://192.168.50.217:18180/`）
+- [x] 部署 <原构建机> 测试服务器（`http://<原构建机>:18180/`）
 
 ### 功能
 
@@ -31,7 +31,7 @@
 ## 进行中 🚧
 
 - [ ] 正式域名接入（用户自行配置，替换内网 IP 访问）
-- [ ] 217 容器更新为 MySQL 数据源版本（需服务器上 `docker compose pull && up -d`）
+- [ ] <原构建机> 容器更新为 MySQL 数据源版本（需服务器上 `docker compose pull && up -d`）
 
 ## 短期计划 📋
 

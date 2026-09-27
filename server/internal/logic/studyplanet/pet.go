@@ -88,12 +88,14 @@ func (s *sStudyPlanet) PetFeed(ctx context.Context, req *v1.PetFeedReq) (res *v1
 	fedBurst := aff < 100 && newAff == 100
 	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", cid).Data(g.Map{
 		"hunger": newHunger, "affection": newAff, "exp": newExp, "level": newLevel,
-		"fed_count": pet["fed_count"].Int() + 1, "last_fed_at": gtime.Now(), "last_decay_at": gtime.Now(),
+		"fed_count": pet["fed_count"].Int() + 1, "last_fed_at": gtime.Now(),
+		"last_hunger_at": gtime.Now(), "last_affection_at": gtime.Now(),
 		col: qty - 1, // 消耗1个库存
 	}).Update(); err != nil {
 		return nil, gerror.Wrap(err, "投喂失败")
 	}
 	pet["hunger"], pet["affection"], pet["exp"], pet["level"], pet["fed_count"] = g.NewVar(newHunger), g.NewVar(newAff), g.NewVar(newExp), g.NewVar(newLevel), g.NewVar(pet["fed_count"].Int()+1)
+	pet["last_hunger_at"], pet["last_affection_at"] = g.NewVar(gtime.Now()), g.NewVar(gtime.Now())
 	pet[col] = g.NewVar(qty - 1)
 	msg := fmt.Sprintf("%s%s 吃得津津有味！", spEmojiOf(pet["species"].String()), pet["name"].String())
 	if hunger >= 100 {

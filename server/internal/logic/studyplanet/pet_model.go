@@ -117,14 +117,13 @@ func inventoryColumn(food string) string {
 // petExpNeed 升到 level+1 所需累计经验：20 + (level-1)*15。
 func petExpNeed(level int) int { return 20 + (level-1)*15 }
 
-// petHungerRate 每小时饱食度衰减。
 // petHungerHours 每满24小时饱食度衰减当前值的20%（指数衰减，越饿掉得越慢）。
 const petHungerHours = 24
 
 // petHungerPct 每24小时扣除的当前饱食度比例（20%）。
 const petHungerPct = 0.2
 
-// petAffectionHours 每多少小时好感度衰减1（缓慢衰减，长期不互动才会触发惩罚）。
+// petAffectionHours 每满8小时好感度衰减1（缓慢衰减，长期不互动才会触发惩罚）。
 const petAffectionHours = 8
 
 // petMood 由饱食度+好感度推导心情。
@@ -154,12 +153,14 @@ func (s *sStudyPlanet) petOf(ctx context.Context, childID int) (gdb.Record, erro
 	// 首次领取：随机一种宠物
 	sp := petSpeciesList[grand.N(0, len(petSpeciesList)-1)]
 	if _, err := g.DB().Model("pets").Ctx(ctx).Data(g.Map{
-		"child_id":      childID,
-		"name":          sp.Name,
-		"species":       sp.Code,
-		"hunger":        80,
-		"affection":     20,
-		"last_decay_at": gtime.Now(),
+		"child_id":          childID,
+		"name":              sp.Name,
+		"species":           sp.Code,
+		"hunger":            80,
+		"affection":         20,
+		"last_decay_at":     gtime.Now(),
+		"last_hunger_at":    gtime.Now(),
+		"last_affection_at": gtime.Now(),
 		// 食物库存默认为0（由迁移 DEFAULT 0 保证）
 	}).Insert(); err != nil {
 		return nil, err
@@ -167,47 +168,94 @@ func (s *sStudyPlanet) petOf(ctx context.Context, childID int) (gdb.Record, erro
 	return g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).One()
 }
 
-// petTick 惰性结算：衰减饱食度（4/小时）+好感度（每8小时-1），检测惩罚。
+// petTick 惰性结算：按真实流逝时间分别衰减饱食度（每 24h 扣当前值 20%）与
+// 好感度（每 8h -1）。两者使用独立时间戳（last_hunger_at / last_affection_at），
+// 互不重置——否则好感度频繁衰减会不断刷新共享时间戳，导致饱食度 24h 衰减对
+// 频繁打开宠物页的孩子永不触发。缺失时间戳时回退到 last_decay_at / 当前时间。
 func (s *sStudyPlanet) petTick(ctx context.Context, pet gdb.Record) {
 	childID := pet["child_id"].Int()
 	hunger := pet["hunger"].Int()
 	aff := pet["affection"].Int()
-	last := pet["last_decay_at"].Time()
-	hours := time.Since(last).Hours()
-	if hours < 1 {
+
+	now := gtime.Now()
+	lastH := pet["last_hunger_at"].Time()
+	if lastH.IsZero() {
+		lastH = pet["last_decay_at"].Time()
+	}
+	if lastH.IsZero() {
+		lastH = now.Time
+	}
+	lastA := pet["last_affection_at"].Time()
+	if lastA.IsZero() {
+		lastA = pet["last_decay_at"].Time()
+	}
+	if lastA.IsZero() {
+		lastA = now.Time
+	}
+
+	hHours := now.Time.Sub(lastH).Hours()
+	aHours := now.Time.Sub(lastA).Hours()
+	if hHours < 1 && aHours < 1 {
 		return
 	}
+
 	nh, na := hunger, aff
+	var setLastH, setLastA bool
+	var newLastH, newLastA time.Time
 	if hunger > 0 {
-		periods := int(hours) / petHungerHours
-		if periods > 0 {
-			// 每24小时扣当前饱食度的20%（指数衰减）
-			decay := int(float64(hunger) * (1 - math.Pow(1-petHungerPct, float64(periods))))
+		hPeriods := int(hHours) / petHungerHours
+		if hPeriods > 0 {
+			// 每 24h 扣当前饱食度的 20%（指数衰减，多周期复利）
+			decay := int(float64(hunger) * (1 - math.Pow(1-petHungerPct, float64(hPeriods))))
 			nh = hunger - decay
 			if nh < 0 {
 				nh = 0
 			}
+			// 仅推进已结算的整周期，保留零头避免时间漂移
+			newLastH = lastH.Add(time.Duration(hPeriods*petHungerHours) * time.Hour)
+			setLastH = true
 		}
 	}
 	if aff > 0 {
-		da := int(hours) / petAffectionHours
-		na = aff - da
-		if na < 0 {
-			na = 0
+		aPeriods := int(aHours) / petAffectionHours
+		if aPeriods > 0 {
+			na = aff - aPeriods
+			if na < 0 {
+				na = 0
+			}
+			newLastA = lastA.Add(time.Duration(aPeriods*petAffectionHours) * time.Hour)
+			setLastA = true
 		}
 	}
-	if nh == hunger && na == aff {
+
+	data := g.Map{}
+	if nh != hunger {
+		data["hunger"] = nh
+	}
+	if na != aff {
+		data["affection"] = na
+	}
+	if setLastH {
+		data["last_hunger_at"] = newLastH
+	}
+	if setLastA {
+		data["last_affection_at"] = newLastA
+	}
+	if len(data) == 0 {
 		return
 	}
-	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).Data(g.Map{
-		"hunger": nh, "affection": na, "last_decay_at": gtime.Now(),
-	}).Update(); err != nil {
+	if _, err := g.DB().Model("pets").Ctx(ctx).Where("child_id", childID).Data(data).Update(); err != nil {
 		gLog("宠物衰减失败: %v", err)
 		return
 	}
 	pet["hunger"] = g.NewVar(nh)
 	pet["affection"] = g.NewVar(na)
-	pet["last_decay_at"] = g.NewVar(gtime.Now())
+	if setLastH {
+		pet["last_hunger_at"] = g.NewVar(newLastH)
+	}
+	if setLastA {
+		pet["last_affection_at"] = g.NewVar(newLastA)
+	}
 
 	// 惩罚：饱食度首次降到0 → 清空积分
 	if nh == 0 && hunger > 0 {
